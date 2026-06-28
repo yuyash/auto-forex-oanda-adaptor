@@ -74,14 +74,14 @@ class OandaDataSource(DataSource):
             ),
         )
 
-    def ticks(
+    def _raw_ticks(
         self,
         *,
         instrument: CurrencyPair,
         start_at: datetime | None = None,
         end_at: datetime | None = None,
     ) -> Iterable[Tick]:
-        """Yield OANDA prices as Core ticks."""
+        """Yield OANDA prices as Core ticks (sampling applied by ``ticks``)."""
         oanda_instrument = OandaInstrumentMapper.to_oanda(instrument)
         if start_at is None and end_at is None:
             response = ensure_success(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -26,6 +26,7 @@ from core import (
     PositionSide,
     Tick,
 )
+from core.clock import local_timezone, now
 
 
 class OandaInstrumentMapper:
@@ -420,10 +421,10 @@ def _decimal(value: Any) -> Decimal:
 def _parse_time(value: Any) -> datetime:
     if isinstance(value, datetime):
         if value.tzinfo is None:
-            return value.replace(tzinfo=UTC)
+            return value.replace(tzinfo=local_timezone())
         return value
     if value is None:
-        return datetime.now(UTC)
+        return now()
     text = str(value)
     if text.endswith("Z"):
         text = f"{text[:-1]}+00:00"
@@ -439,7 +440,7 @@ def _parse_time(value: Any) -> datetime:
         text = f"{prefix}.{fraction[:6].ljust(6, '0')}{timezone}"
     parsed = datetime.fromisoformat(text)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
+        return parsed.replace(tzinfo=local_timezone())
     return parsed
 
 
