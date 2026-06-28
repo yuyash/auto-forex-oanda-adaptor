@@ -1,0 +1,1 @@
+# auto-forex-oanda-adaptor
