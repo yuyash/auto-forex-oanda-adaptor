@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime
+from typing import Any, cast
 
 from core import Candle, CurrencyPair, DataSource, Tick
 
@@ -84,23 +85,43 @@ class OandaDataSource(DataSource):
         """Yield OANDA prices as Core ticks (sampling applied by ``ticks``)."""
         oanda_instrument = OandaInstrumentMapper.to_oanda(instrument)
         if start_at is None and end_at is None:
-            response = ensure_success(
-                self.gateway.get_account_prices(
-                    self.account_id,
-                    instruments=oanda_instrument,
-                ),
-                200,
-            )
+            return self.prices(instruments=(instrument,))
         else:
             response = ensure_success(
                 self.gateway.get_instrument_prices(
                     oanda_instrument,
-                    fromTime=self._format_time(start_at),
-                    toTime=self._format_time(end_at),
+                    **{
+                        "from": self._format_time(start_at),
+                        "to": self._format_time(end_at),
+                    },
                 ),
                 200,
             )
-        prices = getattr(response, "body", {}).get("prices", ())
+        prices = cast(Iterable[Any], self._body_get(response.body, "prices", ()) or ())
+        return self.mapper.ticks_from_prices(prices)
+
+    def prices(
+        self,
+        *,
+        instruments: Iterable[CurrencyPair],
+        since: datetime | None = None,
+        include_units_available: bool = False,
+        include_home_conversions: bool = False,
+    ) -> Iterable[Tick]:
+        """Return latest OANDA prices for one or more instruments."""
+        response = ensure_success(
+            self.gateway.get_account_prices(
+                self.account_id,
+                instruments=",".join(
+                    OandaInstrumentMapper.to_oanda(instrument) for instrument in instruments
+                ),
+                since=self._format_time(since),
+                includeUnitsAvailable=include_units_available,
+                includeHomeConversions=include_home_conversions,
+            ),
+            200,
+        )
+        prices = cast(Iterable[Any], self._body_get(response.body, "prices", ()) or ())
         return self.mapper.ticks_from_prices(prices)
 
     def candles(
@@ -113,12 +134,15 @@ class OandaDataSource(DataSource):
     ) -> Iterable[Candle]:
         """Yield OANDA candlesticks as Core candles."""
         response = ensure_success(
-            self.gateway.get_instrument_candles(
+            self.gateway.get_account_candles(
+                self.account_id,
                 OandaInstrumentMapper.to_oanda(instrument),
-                price="M",
-                granularity=granularity,
-                fromTime=self._format_time(start_at),
-                toTime=self._format_time(end_at),
+                {
+                    "price": "M",
+                    "granularity": granularity,
+                    "from": self._format_time(start_at),
+                    "to": self._format_time(end_at),
+                },
             ),
             200,
         )
@@ -128,7 +152,7 @@ class OandaDataSource(DataSource):
             granularity=granularity,
         )
 
-    def stream_ticks(
+    def stream_prices(
         self,
         *,
         instruments: Iterable[CurrencyPair],
@@ -146,13 +170,28 @@ class OandaDataSource(DataSource):
                 continue
             yield self.mapper.tick_from_price(value)
 
+    def stream_ticks(
+        self,
+        *,
+        instruments: Iterable[CurrencyPair],
+        snapshot: bool = True,
+    ) -> Iterable[Tick]:
+        """Yield live OANDA pricing stream updates as Core ticks."""
+        return self.stream_prices(instruments=instruments, snapshot=snapshot)
+
     def close(self) -> None:
         """Close the underlying HTTP session when available."""
-        session = getattr(self.gateway.context, "_session", None)
-        if session is not None:
-            session.close()
+        close = getattr(self.gateway.opener, "close", None)
+        if close is not None:
+            close()
 
     def _format_time(self, value: datetime | None) -> str | None:
         if value is None:
             return None
         return self.gateway.datetime_to_str(value)
+
+    @staticmethod
+    def _body_get(body: object, key: str, default: object = None) -> object:
+        if isinstance(body, Mapping):
+            return body.get(key, default)
+        return getattr(body, key, default)

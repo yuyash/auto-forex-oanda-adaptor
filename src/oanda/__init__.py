@@ -2,8 +2,17 @@
 
 from importlib.metadata import version
 
+from oanda.accounts import OandaAccountManager
 from oanda.broker import OandaBroker
 from oanda.config import OandaEnvironment, OandaSettings
+from oanda.domain import (
+    OandaAccount,
+    OandaAccountSummary,
+    OandaOrder,
+    OandaPosition,
+    OandaTrade,
+    OandaTransaction,
+)
 from oanda.errors import (
     OandaAdapterError,
     OandaApiError,
@@ -27,10 +36,15 @@ from oanda.mappers import (
     OandaOrderMapper,
     OandaPositionMapper,
 )
+from oanda.models import OandaModel, OandaResponse
+from oanda.provider import OandaProvider
 from oanda.source import OandaDataSource
 
 __all__ = [
+    "OandaAccount",
+    "OandaAccountManager",
     "OandaAccountMapper",
+    "OandaAccountSummary",
     "OandaAdapterError",
     "OandaApiError",
     "OandaAuthenticationError",
@@ -44,15 +58,22 @@ __all__ = [
     "OandaGateway",
     "OandaInstrumentMapper",
     "OandaMarketDataMapper",
+    "OandaModel",
     "OandaNotFoundError",
+    "OandaOrder",
     "OandaOrderMapper",
+    "OandaPosition",
     "OandaPositionMapper",
+    "OandaProvider",
     "OandaRateLimitError",
+    "OandaResponse",
     "OandaRetryPolicy",
     "OandaRetryableApiError",
     "OandaServerError",
     "OandaSettings",
     "OandaTimeoutError",
+    "OandaTrade",
+    "OandaTransaction",
     "OandaTransportError",
     "__version__",
 ]

@@ -1,10 +1,10 @@
 # oanda
 
-OANDA v20 adapter for AutoForexV2.
+OANDA REST v20 adapter for AutoForexV2.
 
 ## Components
 
-- `OandaGateway`: thin wrapper for the OANDA v20 API surface.
+- `OandaGateway`: direct REST client for the OANDA REST v20 API surface.
 - `OandaBroker`: Core `Broker` implementation.
 - `OandaDataSource`: Core `DataSource` implementation for prices and candles.
 - `OandaSettings`: environment-backed settings.

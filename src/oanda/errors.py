@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -58,16 +59,62 @@ class OandaApiError(OandaAdapterError):
 
     @classmethod
     def from_response(cls, response: Any) -> OandaApiError:
-        """Create an API error from a v20 response object."""
+        """Create an API error from an OANDA response object."""
         body = getattr(response, "body", None) or {}
-        error_code = _extract_error_code(body)
-        error_message = _extract_error_message(body)
+        error_code = cls._extract_error_code(body)
+        error_message = cls._extract_error_message(body)
         return cls(
             status=getattr(response, "status", None),
             reason=str(getattr(response, "reason", "") or ""),
             error_code=str(error_code or ""),
             error_message=str(error_message or ""),
         )
+
+    @classmethod
+    def _extract_error_code(cls, body: Any) -> Any:
+        direct_code = cls._get(body, "errorCode", "")
+        if direct_code:
+            return direct_code
+        return cls._extract_transaction_reason(body)
+
+    @classmethod
+    def _extract_error_message(cls, body: Any) -> Any:
+        direct_message = cls._get(body, "errorMessage", "")
+        if direct_message:
+            return direct_message
+        return cls._extract_transaction_reason(body)
+
+    @classmethod
+    def _extract_transaction_reason(cls, body: Any) -> Any:
+        for key in (
+            "orderRejectTransaction",
+            "longOrderRejectTransaction",
+            "shortOrderRejectTransaction",
+            "tradeClientExtensionsModifyRejectTransaction",
+            "orderClientExtensionsModifyRejectTransaction",
+            "transaction",
+        ):
+            transaction = cls._get(body, key)
+            reason = cls._get(transaction, "reason", "")
+            if reason:
+                return reason
+        return ""
+
+    @classmethod
+    def _get(cls, data: Any, key: str, default: Any = None) -> Any:
+        if isinstance(data, Mapping):
+            if key in data:
+                return data[key]
+            return data.get(cls._snake(key), default)
+        if hasattr(data, key):
+            return getattr(data, key)
+        return getattr(data, cls._snake(key), default)
+
+    @staticmethod
+    def _snake(name: str) -> str:
+        value = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+        value = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value)
+        return value.lower()
 
 
 class OandaClientError(OandaApiError):
@@ -146,39 +193,3 @@ def response_status_code(response: Any) -> int | None:
         return int(getattr(response, "status", ""))
     except TypeError, ValueError:
         return None
-
-
-def _extract_error_code(body: Any) -> Any:
-    direct_code = _get(body, "errorCode", "")
-    if direct_code:
-        return direct_code
-    return _extract_transaction_reason(body)
-
-
-def _extract_error_message(body: Any) -> Any:
-    direct_message = _get(body, "errorMessage", "")
-    if direct_message:
-        return direct_message
-    return _extract_transaction_reason(body)
-
-
-def _extract_transaction_reason(body: Any) -> Any:
-    for key in (
-        "orderRejectTransaction",
-        "longOrderRejectTransaction",
-        "shortOrderRejectTransaction",
-        "tradeClientExtensionsModifyRejectTransaction",
-        "orderClientExtensionsModifyRejectTransaction",
-        "transaction",
-    ):
-        transaction = _get(body, key)
-        reason = _get(transaction, "reason", "")
-        if reason:
-            return reason
-    return ""
-
-
-def _get(data: Any, key: str, default: Any = None) -> Any:
-    if isinstance(data, Mapping):
-        return data.get(key, default)
-    return getattr(data, key, default)

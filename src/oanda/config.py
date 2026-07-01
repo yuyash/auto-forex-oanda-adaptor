@@ -14,16 +14,23 @@ class OandaEnvironment(StrEnum):
     PRACTICE = "practice"
     LIVE = "live"
 
+    @property
+    def default_hostname(self) -> str:
+        """Return the default OANDA REST hostname for this environment."""
+        if self == OandaEnvironment.LIVE:
+            return "api-fxtrade.oanda.com"
+        return "api-fxpractice.oanda.com"
 
-def default_hostname_for_environment(environment: OandaEnvironment) -> str:
-    """Return the default OANDA hostname for an environment."""
-    if environment == OandaEnvironment.LIVE:
-        return "api-fxtrade.oanda.com"
-    return "api-fxpractice.oanda.com"
+    @property
+    def default_stream_hostname(self) -> str:
+        """Return the default OANDA streaming hostname for this environment."""
+        if self == OandaEnvironment.LIVE:
+            return "stream-fxtrade.oanda.com"
+        return "stream-fxpractice.oanda.com"
 
 
 class OandaSettings(BaseSettings):
-    """Runtime settings for OANDA v20 access."""
+    """Runtime settings for OANDA REST v20 access."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -35,6 +42,7 @@ class OandaSettings(BaseSettings):
     access_token: SecretStr
     environment: OandaEnvironment = OandaEnvironment.PRACTICE
     hostname: str | None = None
+    stream_hostname: str | None = None
     port: int = Field(default=443, gt=0)
     ssl: bool = True
     application: str = "AutoForexV2"
@@ -52,4 +60,12 @@ class OandaSettings(BaseSettings):
         """Return the explicit hostname or the default for the environment."""
         if self.hostname:
             return self.hostname
-        return default_hostname_for_environment(self.environment)
+        return self.environment.default_hostname
+
+    @computed_field
+    @property
+    def resolved_stream_hostname(self) -> str:
+        """Return the explicit streaming hostname or the default for the environment."""
+        if self.stream_hostname:
+            return self.stream_hostname
+        return self.environment.default_stream_hostname

@@ -9,7 +9,6 @@ dependencies = [
     "pydantic-settings>=2.14.2",
     "pyyaml>=6.0.3",
     "tenacity>=9.1.4",
-    "v20>=3.0.25.0",
 ]
 
 [build-system]
