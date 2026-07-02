@@ -11,9 +11,10 @@ from oanda.domain import (
 )
 
 
-def test_domain_models_remain_core_model_subclasses() -> None:
-    assert issubclass(OandaAccount, Account)
-    assert issubclass(OandaOrder, Order)
-    assert issubclass(OandaPosition, Position)
-    assert issubclass(OandaTrade, Trade)
-    assert issubclass(OandaTransaction, Transaction)
+class TestDomain:
+    def test_domain_models_remain_core_model_subclasses(self) -> None:
+        assert issubclass(OandaAccount, Account)
+        assert issubclass(OandaOrder, Order)
+        assert issubclass(OandaPosition, Position)
+        assert issubclass(OandaTrade, Trade)
+        assert issubclass(OandaTransaction, Transaction)

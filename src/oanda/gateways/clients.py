@@ -1,4 +1,4 @@
-"""Facade for OANDA REST v20 endpoint clients."""
+"""Endpoint-specific clients built on the shared OANDA transport."""
 
 from __future__ import annotations
 
@@ -6,147 +6,31 @@ from collections.abc import Mapping
 from typing import Any
 
 import oanda.models as om
-from oanda.config import OandaSettings
-from oanda.gateways.clients import (
-    OandaAccountsApi,
-    OandaOrdersApi,
-    OandaPositionsApi,
-    OandaPricingApi,
-    OandaTradesApi,
-    OandaTransactionsApi,
-)
-from oanda.transport import OandaRetryPolicy, OandaTransport
+from oanda.transport import OandaTransport
+
+_CREATED = (201,)
+_ORDER_REJECTED = (400, 404)
 
 
-class OandaGateway:
-    """Compatibility facade for the OANDA REST v20 API."""
+class OandaAccountsApi:
+    """OANDA account endpoints."""
 
-    def __init__(
-        self,
-        *,
-        access_token: str,
-        hostname: str,
-        stream_hostname: str,
-        port: int = 443,
-        ssl: bool = True,
-        application: str = "AutoForexV2",
-        poll_timeout: int = 10,
-        stream_timeout: int = 60,
-        retry_policy: OandaRetryPolicy | None = None,
-        opener: Any | None = None,
-        transport: OandaTransport | None = None,
-    ) -> None:
-        self.transport = transport or OandaTransport(
-            access_token=access_token,
-            hostname=hostname,
-            stream_hostname=stream_hostname,
-            port=port,
-            ssl=ssl,
-            application=application,
-            poll_timeout=poll_timeout,
-            stream_timeout=stream_timeout,
-            retry_policy=retry_policy,
-            opener=opener,
-        )
-        self.accounts = OandaAccountsApi(self.transport)
-        self.orders = OandaOrdersApi(self.transport)
-        self.positions = OandaPositionsApi(self.transport)
-        self.pricing = OandaPricingApi(self.transport)
-        self.trades = OandaTradesApi(self.transport)
-        self.transactions = OandaTransactionsApi(self.transport)
-
-    @classmethod
-    def from_settings(cls, settings: OandaSettings) -> OandaGateway:
-        """Create a gateway from OANDA settings."""
-        return cls(
-            access_token=settings.access_token.get_secret_value(),
-            hostname=settings.resolved_hostname,
-            stream_hostname=settings.resolved_stream_hostname,
-            port=settings.port,
-            ssl=settings.ssl,
-            application=settings.application,
-            stream_timeout=settings.stream_timeout,
-            poll_timeout=settings.poll_timeout,
-            retry_policy=OandaRetryPolicy.from_settings(settings),
-        )
-
-    @property
-    def access_token(self) -> str:
-        """Return the configured OANDA access token."""
-        return self.transport.access_token
-
-    @property
-    def hostname(self) -> str:
-        """Return the REST API hostname."""
-        return self.transport.hostname
-
-    @property
-    def stream_hostname(self) -> str:
-        """Return the streaming API hostname."""
-        return self.transport.stream_hostname
-
-    @property
-    def port(self) -> int:
-        """Return the API port."""
-        return self.transport.port
-
-    @property
-    def ssl(self) -> bool:
-        """Return whether HTTPS is enabled."""
-        return self.transport.ssl
-
-    @property
-    def application(self) -> str:
-        """Return the User-Agent application name."""
-        return self.transport.application
-
-    @property
-    def poll_timeout(self) -> int:
-        """Return the non-streaming request timeout."""
-        return self.transport.poll_timeout
-
-    @property
-    def stream_timeout(self) -> int:
-        """Return the streaming request timeout."""
-        return self.transport.stream_timeout
-
-    @property
-    def retry_policy(self) -> OandaRetryPolicy:
-        """Return the retry policy."""
-        return self.transport.retry_policy
-
-    @property
-    def opener(self) -> Any:
-        """Return the underlying urllib opener."""
-        return self.transport.opener
-
-    def datetime_to_str(self, value: Any) -> str:
-        """Format a datetime value for OANDA query parameters."""
-        return self.transport.datetime_to_str(value)
-
-    def request(
-        self,
-        method: str,
-        path: str,
-        *,
-        query: Any = None,
-        body: Any = None,
-        retry: bool = False,
-    ) -> om.OandaResponse[dict[str, Any]]:
-        """Execute a raw REST request and return a typed response wrapper."""
-        return self.transport.request(method, path, query=query, body=body, retry=retry)
+    def __init__(self, transport: OandaTransport) -> None:
+        self._transport = transport
 
     def list_accounts(self) -> om.OandaResponse[om.AccountsResponse]:
         """List accounts authorized for the token."""
-        return self.accounts.list_accounts()
+        return self._transport._request("GET", "/v3/accounts", om.AccountsResponse)
 
     def get_account(self, account_id: str) -> om.OandaResponse[om.AccountResponse]:
         """Get full account details."""
-        return self.accounts.get_account(account_id)
+        return self._transport._request("GET", f"/v3/accounts/{account_id}", om.AccountResponse)
 
     def get_account_summary(self, account_id: str) -> om.OandaResponse[om.AccountSummaryResponse]:
         """Get account summary."""
-        return self.accounts.get_account_summary(account_id)
+        return self._transport._request(
+            "GET", f"/v3/accounts/{account_id}/summary", om.AccountSummaryResponse
+        )
 
     def get_account_instruments(
         self,
@@ -154,7 +38,12 @@ class OandaGateway:
         request: om.AccountInstrumentsRequest | Mapping[str, Any] | None = None,
     ) -> om.OandaResponse[om.AccountInstrumentsResponse]:
         """Get account tradable instruments."""
-        return self.accounts.get_account_instruments(account_id, request)
+        return self._transport._request(
+            "GET",
+            f"/v3/accounts/{account_id}/instruments",
+            om.AccountInstrumentsResponse,
+            query=request,
+        )
 
     def configure_account(
         self,
@@ -165,7 +54,15 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.ConfigureAccountResponse]:
         """Configure account alias or margin settings."""
-        return self.accounts.configure_account(account_id, request, retry=retry, **kwargs)
+        body = request if request is not None else kwargs
+        return self._transport._request(
+            "PATCH",
+            f"/v3/accounts/{account_id}/configuration",
+            om.ConfigureAccountResponse,
+            body=body,
+            return_error_statuses=(400, 403),
+            retry=retry,
+        )
 
     def get_account_changes(
         self,
@@ -173,7 +70,19 @@ class OandaGateway:
         request: om.AccountChangesRequest | Mapping[str, Any] | None = None,
     ) -> om.OandaResponse[om.AccountChangesResponse]:
         """Get account changes since a transaction ID."""
-        return self.accounts.get_account_changes(account_id, request)
+        return self._transport._request(
+            "GET",
+            f"/v3/accounts/{account_id}/changes",
+            om.AccountChangesResponse,
+            query=request,
+        )
+
+
+class OandaOrdersApi:
+    """OANDA order endpoints."""
+
+    def __init__(self, transport: OandaTransport) -> None:
+        self._transport = transport
 
     def create_order(
         self,
@@ -184,7 +93,16 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create an order."""
-        return self.orders.create_order(account_id, request, retry=retry, **kwargs)
+        body = request if request is not None else kwargs
+        return self._transport._request(
+            "POST",
+            f"/v3/accounts/{account_id}/orders",
+            om.OrderTransactionResponse,
+            body=body,
+            success_statuses=_CREATED,
+            return_error_statuses=_ORDER_REJECTED,
+            retry=retry,
+        )
 
     def list_orders(
         self,
@@ -192,17 +110,25 @@ class OandaGateway:
         request: om.OrdersRequest | Mapping[str, Any] | None = None,
     ) -> om.OandaResponse[om.OrdersResponse]:
         """List orders."""
-        return self.orders.list_orders(account_id, request)
+        return self._transport._request(
+            "GET", f"/v3/accounts/{account_id}/orders", om.OrdersResponse, query=request
+        )
 
     def list_pending_orders(self, account_id: str) -> om.OandaResponse[om.OrdersResponse]:
         """List pending orders."""
-        return self.orders.list_pending_orders(account_id)
+        return self._transport._request(
+            "GET", f"/v3/accounts/{account_id}/pendingOrders", om.OrdersResponse
+        )
 
     def get_order(
         self, account_id: str, order_specifier: str
     ) -> om.OandaResponse[om.OrderResponse]:
         """Get one order."""
-        return self.orders.get_order(account_id, order_specifier)
+        return self._transport._request(
+            "GET",
+            f"/v3/accounts/{account_id}/orders/{order_specifier}",
+            om.OrderResponse,
+        )
 
     def replace_order(
         self,
@@ -214,8 +140,15 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Replace one order."""
-        return self.orders.replace_order(
-            account_id, order_specifier, request, retry=retry, **kwargs
+        body = request if request is not None else kwargs
+        return self._transport._request(
+            "PUT",
+            f"/v3/accounts/{account_id}/orders/{order_specifier}",
+            om.OrderTransactionResponse,
+            body=body,
+            success_statuses=_CREATED,
+            return_error_statuses=_ORDER_REJECTED,
+            retry=retry,
         )
 
     def cancel_order(
@@ -226,7 +159,13 @@ class OandaGateway:
         retry: bool = False,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Cancel one order."""
-        return self.orders.cancel_order(account_id, order_specifier, retry=retry)
+        return self._transport._request(
+            "PUT",
+            f"/v3/accounts/{account_id}/orders/{order_specifier}/cancel",
+            om.OrderTransactionResponse,
+            return_error_statuses=(404,),
+            retry=retry,
+        )
 
     def set_order_client_extensions(
         self,
@@ -238,8 +177,14 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Set order client extensions."""
-        return self.orders.set_order_client_extensions(
-            account_id, order_specifier, request, retry=retry, **kwargs
+        body = request if request is not None else kwargs
+        return self._transport._request(
+            "PUT",
+            f"/v3/accounts/{account_id}/orders/{order_specifier}/clientExtensions",
+            om.OrderTransactionResponse,
+            body=body,
+            return_error_statuses=(400, 404),
+            retry=retry,
         )
 
     def create_market_order(
@@ -250,7 +195,7 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create a market order."""
-        return self.orders.create_market_order(account_id, retry=retry, **kwargs)
+        return self.create_order(account_id, {"order": {**kwargs, "type": "MARKET"}}, retry=retry)
 
     def create_limit_order(
         self,
@@ -260,7 +205,7 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create a limit order."""
-        return self.orders.create_limit_order(account_id, retry=retry, **kwargs)
+        return self.create_order(account_id, {"order": {**kwargs, "type": "LIMIT"}}, retry=retry)
 
     def replace_limit_order(
         self,
@@ -271,7 +216,9 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Replace a limit order."""
-        return self.orders.replace_limit_order(account_id, order_id, retry=retry, **kwargs)
+        return self.replace_order(
+            account_id, order_id, {"order": {**kwargs, "type": "LIMIT"}}, retry=retry
+        )
 
     def create_stop_order(
         self,
@@ -281,7 +228,7 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create a stop order."""
-        return self.orders.create_stop_order(account_id, retry=retry, **kwargs)
+        return self.create_order(account_id, {"order": {**kwargs, "type": "STOP"}}, retry=retry)
 
     def replace_stop_order(
         self,
@@ -292,7 +239,9 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Replace a stop order."""
-        return self.orders.replace_stop_order(account_id, order_id, retry=retry, **kwargs)
+        return self.replace_order(
+            account_id, order_id, {"order": {**kwargs, "type": "STOP"}}, retry=retry
+        )
 
     def create_market_if_touched_order(
         self,
@@ -302,7 +251,11 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create a market-if-touched order."""
-        return self.orders.create_market_if_touched_order(account_id, retry=retry, **kwargs)
+        return self.create_order(
+            account_id,
+            {"order": {**kwargs, "type": "MARKET_IF_TOUCHED"}},
+            retry=retry,
+        )
 
     def replace_market_if_touched_order(
         self,
@@ -313,8 +266,11 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Replace a market-if-touched order."""
-        return self.orders.replace_market_if_touched_order(
-            account_id, order_id, retry=retry, **kwargs
+        return self.replace_order(
+            account_id,
+            order_id,
+            {"order": {**kwargs, "type": "MARKET_IF_TOUCHED"}},
+            retry=retry,
         )
 
     def create_take_profit_order(
@@ -325,7 +281,9 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create a take-profit order."""
-        return self.orders.create_take_profit_order(account_id, retry=retry, **kwargs)
+        return self.create_order(
+            account_id, {"order": {**kwargs, "type": "TAKE_PROFIT"}}, retry=retry
+        )
 
     def replace_take_profit_order(
         self,
@@ -336,7 +294,12 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Replace a take-profit order."""
-        return self.orders.replace_take_profit_order(account_id, order_id, retry=retry, **kwargs)
+        return self.replace_order(
+            account_id,
+            order_id,
+            {"order": {**kwargs, "type": "TAKE_PROFIT"}},
+            retry=retry,
+        )
 
     def create_stop_loss_order(
         self,
@@ -346,7 +309,9 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create a stop-loss order."""
-        return self.orders.create_stop_loss_order(account_id, retry=retry, **kwargs)
+        return self.create_order(
+            account_id, {"order": {**kwargs, "type": "STOP_LOSS"}}, retry=retry
+        )
 
     def replace_stop_loss_order(
         self,
@@ -357,7 +322,12 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Replace a stop-loss order."""
-        return self.orders.replace_stop_loss_order(account_id, order_id, retry=retry, **kwargs)
+        return self.replace_order(
+            account_id,
+            order_id,
+            {"order": {**kwargs, "type": "STOP_LOSS"}},
+            retry=retry,
+        )
 
     def create_trailing_stop_loss_order(
         self,
@@ -367,7 +337,11 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create a trailing stop-loss order."""
-        return self.orders.create_trailing_stop_loss_order(account_id, retry=retry, **kwargs)
+        return self.create_order(
+            account_id,
+            {"order": {**kwargs, "type": "TRAILING_STOP_LOSS"}},
+            retry=retry,
+        )
 
     def replace_trailing_stop_loss_order(
         self,
@@ -378,23 +352,41 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Replace a trailing stop-loss order."""
-        return self.orders.replace_trailing_stop_loss_order(
-            account_id, order_id, retry=retry, **kwargs
+        return self.replace_order(
+            account_id,
+            order_id,
+            {"order": {**kwargs, "type": "TRAILING_STOP_LOSS"}},
+            retry=retry,
         )
+
+
+class OandaPositionsApi:
+    """OANDA position endpoints."""
+
+    def __init__(self, transport: OandaTransport) -> None:
+        self._transport = transport
 
     def list_positions(self, account_id: str) -> om.OandaResponse[om.PositionsResponse]:
         """List positions."""
-        return self.positions.list_positions(account_id)
+        return self._transport._request(
+            "GET", f"/v3/accounts/{account_id}/positions", om.PositionsResponse
+        )
 
     def list_open_positions(self, account_id: str) -> om.OandaResponse[om.PositionsResponse]:
         """List open positions."""
-        return self.positions.list_open_positions(account_id)
+        return self._transport._request(
+            "GET", f"/v3/accounts/{account_id}/openPositions", om.PositionsResponse
+        )
 
     def get_position(
         self, account_id: str, instrument: str
     ) -> om.OandaResponse[om.PositionResponse]:
         """Get one position."""
-        return self.positions.get_position(account_id, instrument)
+        return self._transport._request(
+            "GET",
+            f"/v3/accounts/{account_id}/positions/{instrument}",
+            om.PositionResponse,
+        )
 
     def close_position(
         self,
@@ -406,7 +398,22 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.PositionCloseResponse]:
         """Close one position."""
-        return self.positions.close_position(account_id, instrument, request, retry=retry, **kwargs)
+        body = request if request is not None else kwargs
+        return self._transport._request(
+            "PUT",
+            f"/v3/accounts/{account_id}/positions/{instrument}/close",
+            om.PositionCloseResponse,
+            body=body,
+            return_error_statuses=_ORDER_REJECTED,
+            retry=retry,
+        )
+
+
+class OandaPricingApi:
+    """OANDA pricing and candle endpoints."""
+
+    def __init__(self, transport: OandaTransport) -> None:
+        self._transport = transport
 
     def get_account_prices(
         self,
@@ -415,7 +422,10 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.PricingResponse]:
         """Get account prices."""
-        return self.pricing.get_account_prices(account_id, request, **kwargs)
+        query = request if request is not None else kwargs
+        return self._transport._request(
+            "GET", f"/v3/accounts/{account_id}/pricing", om.PricingResponse, query=query
+        )
 
     def stream_account_prices(
         self,
@@ -424,7 +434,13 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[None]:
         """Stream account prices."""
-        return self.pricing.stream_account_prices(account_id, request, **kwargs)
+        query = request if request is not None else kwargs
+        return self._transport._stream(
+            "GET",
+            f"/v3/accounts/{account_id}/pricing/stream",
+            query=query,
+            stream_kind="pricing",
+        )
 
     def get_account_candles(
         self,
@@ -434,7 +450,13 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.CandlestickResponse]:
         """Fetch account-specific candles."""
-        return self.pricing.get_account_candles(account_id, instrument, request, **kwargs)
+        query = request if request is not None else kwargs
+        return self._transport._request(
+            "GET",
+            f"/v3/accounts/{account_id}/instruments/{instrument}/candles",
+            om.CandlestickResponse,
+            query=query,
+        )
 
     def get_instrument_candles(
         self,
@@ -442,13 +464,30 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.CandlestickResponse]:
         """Fetch public instrument candles."""
-        return self.pricing.get_instrument_candles(instrument, **kwargs)
+        return self._transport._request(
+            "GET",
+            f"/v3/instruments/{instrument}/candles",
+            om.CandlestickResponse,
+            query=kwargs,
+        )
 
     def get_instrument_prices(
         self, instrument: str, **kwargs: Any
     ) -> om.OandaResponse[om.PricingResponse]:
         """Fetch account-independent instrument prices when supported by OANDA."""
-        return self.pricing.get_instrument_prices(instrument, **kwargs)
+        return self._transport._request(
+            "GET",
+            f"/v3/instruments/{instrument}/prices",
+            om.PricingResponse,
+            query=kwargs,
+        )
+
+
+class OandaTradesApi:
+    """OANDA trade endpoints."""
+
+    def __init__(self, transport: OandaTransport) -> None:
+        self._transport = transport
 
     def list_trades(
         self,
@@ -456,17 +495,25 @@ class OandaGateway:
         request: om.TradesRequest | Mapping[str, Any] | None = None,
     ) -> om.OandaResponse[om.TradesResponse]:
         """List trades."""
-        return self.trades.list_trades(account_id, request)
+        return self._transport._request(
+            "GET", f"/v3/accounts/{account_id}/trades", om.TradesResponse, query=request
+        )
 
     def list_open_trades(self, account_id: str) -> om.OandaResponse[om.TradesResponse]:
         """List open trades."""
-        return self.trades.list_open_trades(account_id)
+        return self._transport._request(
+            "GET", f"/v3/accounts/{account_id}/openTrades", om.TradesResponse
+        )
 
     def get_trade(
         self, account_id: str, trade_specifier: str
     ) -> om.OandaResponse[om.TradeResponse]:
         """Get one trade."""
-        return self.trades.get_trade(account_id, trade_specifier)
+        return self._transport._request(
+            "GET",
+            f"/v3/accounts/{account_id}/trades/{trade_specifier}",
+            om.TradeResponse,
+        )
 
     def close_trade(
         self,
@@ -478,7 +525,15 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.TradeTransactionResponse]:
         """Close one trade."""
-        return self.trades.close_trade(account_id, trade_specifier, request, retry=retry, **kwargs)
+        body = request if request is not None else kwargs
+        return self._transport._request(
+            "PUT",
+            f"/v3/accounts/{account_id}/trades/{trade_specifier}/close",
+            om.TradeTransactionResponse,
+            body=body,
+            return_error_statuses=_ORDER_REJECTED,
+            retry=retry,
+        )
 
     def set_trade_client_extensions(
         self,
@@ -490,8 +545,14 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.TradeTransactionResponse]:
         """Set trade client extensions."""
-        return self.trades.set_trade_client_extensions(
-            account_id, trade_specifier, request, retry=retry, **kwargs
+        body = request if request is not None else kwargs
+        return self._transport._request(
+            "PUT",
+            f"/v3/accounts/{account_id}/trades/{trade_specifier}/clientExtensions",
+            om.TradeTransactionResponse,
+            body=body,
+            return_error_statuses=(400, 404),
+            retry=retry,
         )
 
     def set_trade_dependent_orders(
@@ -504,9 +565,22 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.TradeTransactionResponse]:
         """Set trade dependent orders."""
-        return self.trades.set_trade_dependent_orders(
-            account_id, trade_specifier, request, retry=retry, **kwargs
+        body = request if request is not None else kwargs
+        return self._transport._request(
+            "PUT",
+            f"/v3/accounts/{account_id}/trades/{trade_specifier}/orders",
+            om.TradeTransactionResponse,
+            body=body,
+            return_error_statuses=_ORDER_REJECTED,
+            retry=retry,
         )
+
+
+class OandaTransactionsApi:
+    """OANDA transaction endpoints."""
+
+    def __init__(self, transport: OandaTransport) -> None:
+        self._transport = transport
 
     def list_transactions(
         self,
@@ -514,7 +588,12 @@ class OandaGateway:
         request: om.TransactionsRequest | Mapping[str, Any] | None = None,
     ) -> om.OandaResponse[om.TransactionPagesResponse]:
         """List transaction pages."""
-        return self.transactions.list_transactions(account_id, request)
+        return self._transport._request(
+            "GET",
+            f"/v3/accounts/{account_id}/transactions",
+            om.TransactionPagesResponse,
+            query=request,
+        )
 
     def get_transaction(
         self,
@@ -522,7 +601,11 @@ class OandaGateway:
         transaction_id: str,
     ) -> om.OandaResponse[om.TransactionResponse]:
         """Get one transaction."""
-        return self.transactions.get_transaction(account_id, transaction_id)
+        return self._transport._request(
+            "GET",
+            f"/v3/accounts/{account_id}/transactions/{transaction_id}",
+            om.TransactionResponse,
+        )
 
     def get_transaction_range(
         self,
@@ -531,7 +614,15 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.TransactionsResponse]:
         """Get a transaction ID range."""
-        return self.transactions.get_transaction_range(account_id, request, **kwargs)
+        query = (
+            request if request is not None else om.TransactionRangeRequest.model_validate(kwargs)
+        )
+        return self._transport._request(
+            "GET",
+            f"/v3/accounts/{account_id}/transactions/idrange",
+            om.TransactionsResponse,
+            query=query,
+        )
 
     def get_transactions_since(
         self,
@@ -540,11 +631,18 @@ class OandaGateway:
         **kwargs: Any,
     ) -> om.OandaResponse[om.TransactionsResponse]:
         """Get transactions since an ID."""
-        return self.transactions.get_transactions_since(account_id, request, **kwargs)
+        query = request if request is not None else kwargs
+        return self._transport._request(
+            "GET",
+            f"/v3/accounts/{account_id}/transactions/sinceid",
+            om.TransactionsResponse,
+            query=query,
+        )
 
     def stream_transactions(self, account_id: str) -> om.OandaResponse[None]:
         """Stream transactions."""
-        return self.transactions.stream_transactions(account_id)
-
-
-__all__ = ["OandaGateway", "OandaRetryPolicy"]
+        return self._transport._stream(
+            "GET",
+            f"/v3/accounts/{account_id}/transactions/stream",
+            stream_kind="transactions",
+        )

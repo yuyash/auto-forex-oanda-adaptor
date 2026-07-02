@@ -4,18 +4,22 @@ This module is generated from the OANDA REST v20 endpoint and definition pages
 used by AutoForexV2. The models intentionally stay in the oanda package because
 the field names and enum values are OANDA-specific.
 """
-# ruff: noqa: E501, E741, RUF002, RUF003, UP040, UP046
+# ruff: noqa: E501, E741, RUF002, RUF003, UP040
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any, Generic, TypeAlias, TypeVar
+from typing import Any, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
+
+import oanda.responses as _responses
+
+OandaHttpResponse = _responses.OandaHttpResponse
+OandaResponse = _responses.OandaResponse
+OandaStreamResponse = _responses.OandaStreamResponse
 
 
 class OandaModel(BaseModel):
@@ -3042,86 +3046,6 @@ class UserAttributes(OandaModel):
     division_abbreviation: str | None = Field(default=None, alias="divisionAbbreviation")
     language_abbreviation: str | None = Field(default=None, alias="languageAbbreviation")
     home_currency: str | None = Field(default=None, alias="homeCurrency")
-
-
-TBody = TypeVar("TBody")
-
-
-@dataclass(frozen=True)
-class OandaHttpResponse:
-    """Raw HTTP response metadata used by OandaResponse."""
-
-    status: int
-    reason: str
-    headers: dict[str, str]
-    body: Any
-    raw_body: bytes
-    url: str
-    content_type: str | None = None
-
-
-@dataclass(frozen=True)
-class OandaStreamResponse:
-    """Streaming HTTP response wrapper."""
-
-    status: int
-    reason: str
-    headers: dict[str, str]
-    stream: Any
-    url: str
-    content_type: str | None = None
-    stream_kind: str = "pricing"
-
-    def parts(self) -> Iterator[tuple[str, Any]]:
-        """Yield typed stream parts from newline-delimited OANDA JSON objects."""
-        import json
-
-        for line in self.stream:
-            if not line:
-                continue
-            payload = line.decode("utf-8").strip() if isinstance(line, bytes) else str(line).strip()
-            if not payload:
-                continue
-            data = json.loads(payload)
-            item_type = data.get("type")
-            if item_type == "HEARTBEAT":
-                if self.stream_kind == "transactions":
-                    yield "TransactionHeartbeat", TransactionHeartbeat.model_validate(data)
-                else:
-                    yield "PricingHeartbeat", PricingHeartbeat.model_validate(data)
-            elif self.stream_kind == "transactions":
-                yield "Transaction", Transaction.model_validate(data)
-            else:
-                yield "ClientPrice", ClientPrice.model_validate(data)
-
-
-@dataclass(frozen=True)
-class OandaResponse(Generic[TBody]):
-    """Typed response wrapper retaining raw HTTP metadata."""
-
-    raw: OandaHttpResponse | OandaStreamResponse
-    body: TBody
-
-    @property
-    def status(self) -> int:
-        return self.raw.status
-
-    @property
-    def reason(self) -> str:
-        return self.raw.reason
-
-    @property
-    def content_type(self) -> str | None:
-        return self.raw.content_type
-
-    @property
-    def raw_body(self) -> bytes:
-        return getattr(self.raw, "raw_body", b"")
-
-    def parts(self) -> Iterator[tuple[str, Any]]:
-        """Delegate streaming parts to the underlying stream response."""
-        if isinstance(self.raw, OandaStreamResponse):
-            yield from self.raw.parts()
 
 
 class AccountsResponse(OandaModel):

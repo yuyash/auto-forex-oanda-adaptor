@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from core import Candle, CurrencyPair, DataSource, Tick
 
-from oanda.config import OandaEnvironment, OandaSettings
+from oanda.config import OandaSettings
 from oanda.errors import ensure_success
 from oanda.gateway import OandaGateway
 from oanda.mappers import OandaInstrumentMapper, OandaMarketDataMapper
@@ -34,45 +34,6 @@ class OandaDataSource(DataSource):
         return cls(
             account_id=settings.account_id,
             gateway=OandaGateway.from_settings(settings),
-        )
-
-    @classmethod
-    def from_credentials(
-        cls,
-        *,
-        account_id: str,
-        access_token: str,
-        environment: OandaEnvironment = OandaEnvironment.PRACTICE,
-        hostname: str | None = None,
-        port: int = 443,
-        ssl: bool = True,
-        application: str = "AutoForexV2",
-        stream_chunk_size: int = 512,
-        stream_timeout: int = 60,
-        poll_timeout: int = 10,
-        retry_attempts: int = 3,
-        retry_initial_seconds: float = 0.25,
-        retry_max_seconds: float = 4.0,
-        retry_multiplier: float = 2.0,
-    ) -> OandaDataSource:
-        """Create an OANDA data source directly from account ID and token."""
-        return cls(
-            account_id=account_id,
-            gateway=OandaGateway.from_credentials(
-                access_token=access_token,
-                environment=environment,
-                hostname=hostname,
-                port=port,
-                ssl=ssl,
-                application=application,
-                stream_chunk_size=stream_chunk_size,
-                stream_timeout=stream_timeout,
-                poll_timeout=poll_timeout,
-                retry_attempts=retry_attempts,
-                retry_initial_seconds=retry_initial_seconds,
-                retry_max_seconds=retry_max_seconds,
-                retry_multiplier=retry_multiplier,
-            ),
         )
 
     def _raw_ticks(

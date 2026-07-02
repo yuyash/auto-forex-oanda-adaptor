@@ -16,11 +16,13 @@ from core import (
 )
 from pydantic import Field, model_validator
 
+from oanda.constants import OANDA_PROVIDER
+
 
 class OandaAccount(Account):
     """Core Account with OANDA-specific identifiers and tags."""
 
-    provider: AccountProvider = AccountProvider.OANDA
+    provider: AccountProvider = OANDA_PROVIDER
     mt4_account_id: int | None = None
     tags: tuple[str, ...] = ()
     last_transaction_id: str | None = Field(default=None, min_length=1)
@@ -30,7 +32,7 @@ class OandaAccount(Account):
     def _force_provider(cls, data: object) -> object:
         if isinstance(data, dict):
             normalized = dict(data)
-            normalized["provider"] = AccountProvider.OANDA
+            normalized["provider"] = OANDA_PROVIDER
             return normalized
         return data
 

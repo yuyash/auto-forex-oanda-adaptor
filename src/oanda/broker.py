@@ -20,16 +20,25 @@ from core import (
     Transaction,
 )
 
-from oanda.config import OandaEnvironment, OandaSettings
-from oanda.errors import ensure_success, error_from_response
+import oanda.payload as payload
+from oanda.config import OandaSettings
+from oanda.errors import ensure_success
 from oanda.gateway import OandaGateway
 from oanda.mappers import (
     OandaAccountMapper,
-    OandaInstrumentMapper,
     OandaOrderMapper,
     OandaPositionMapper,
     OandaTradeMapper,
     OandaTransactionMapper,
+)
+from oanda.services.broker import (
+    OandaOrderService,
+    OandaPositionService,
+    OandaTradeService,
+    OandaTransactionService,
+    close_position_kwargs,
+    order_type,
+    raise_unexpected_order_response,
 )
 
 
@@ -49,6 +58,29 @@ class OandaBroker(Broker):
         self.account_mapper = account_mapper or OandaAccountMapper()
         self.order_mapper = order_mapper or OandaOrderMapper()
         self._account_currency: Currency | None = None
+        self._orders = OandaOrderService(
+            account_id=account_id,
+            gateway=gateway,
+            order_mapper=self.order_mapper,
+        )
+        self._positions = OandaPositionService(
+            account_id=account_id,
+            gateway=gateway,
+            account_currency=lambda: self.account_currency,
+            position_mapper_factory=OandaPositionMapper,
+        )
+        self._trades = OandaTradeService(
+            account_id=account_id,
+            gateway=gateway,
+            account_currency=lambda: self.account_currency,
+            trade_mapper_factory=OandaTradeMapper,
+        )
+        self._transactions = OandaTransactionService(
+            account_id=account_id,
+            gateway=gateway,
+            account_currency=lambda: self.account_currency,
+            transaction_mapper_factory=OandaTransactionMapper,
+        )
 
     @classmethod
     def from_settings(cls, settings: OandaSettings) -> OandaBroker:
@@ -56,45 +88,6 @@ class OandaBroker(Broker):
         return cls(
             account_id=settings.account_id,
             gateway=OandaGateway.from_settings(settings),
-        )
-
-    @classmethod
-    def from_credentials(
-        cls,
-        *,
-        account_id: str,
-        access_token: str,
-        environment: OandaEnvironment = OandaEnvironment.PRACTICE,
-        hostname: str | None = None,
-        port: int = 443,
-        ssl: bool = True,
-        application: str = "AutoForexV2",
-        stream_chunk_size: int = 512,
-        stream_timeout: int = 60,
-        poll_timeout: int = 10,
-        retry_attempts: int = 3,
-        retry_initial_seconds: float = 0.25,
-        retry_max_seconds: float = 4.0,
-        retry_multiplier: float = 2.0,
-    ) -> OandaBroker:
-        """Create an OANDA broker directly from account ID and token."""
-        return cls(
-            account_id=account_id,
-            gateway=OandaGateway.from_credentials(
-                access_token=access_token,
-                environment=environment,
-                hostname=hostname,
-                port=port,
-                ssl=ssl,
-                application=application,
-                stream_chunk_size=stream_chunk_size,
-                stream_timeout=stream_timeout,
-                poll_timeout=poll_timeout,
-                retry_attempts=retry_attempts,
-                retry_initial_seconds=retry_initial_seconds,
-                retry_max_seconds=retry_max_seconds,
-                retry_multiplier=retry_multiplier,
-            ),
         )
 
     @property
@@ -107,19 +100,7 @@ class OandaBroker(Broker):
 
     def place_order(self, order: Order) -> Order:
         """Place an order through OANDA."""
-        kwargs = self.order_mapper.order_kwargs(order)
-        if order.order_type == OrderType.MARKET:
-            response = self.gateway.create_market_order(self.account_id, retry=True, **kwargs)
-        elif order.order_type == OrderType.LIMIT:
-            response = self.gateway.create_limit_order(self.account_id, retry=True, **kwargs)
-        elif order.order_type == OrderType.STOP:
-            response = self.gateway.create_stop_order(self.account_id, retry=True, **kwargs)
-        else:
-            msg = f"unsupported OANDA order type: {order.order_type}"
-            raise ValueError(msg)
-
-        self._raise_unexpected_order_response(response)
-        return self.order_mapper.order_from_order_response(response, order)
+        return self._orders.place_order(order)
 
     def close_position(
         self,
@@ -129,74 +110,31 @@ class OandaBroker(Broker):
         units: Decimal | None = None,
     ) -> Order:
         """Close all or part of an OANDA position."""
-        state = position.require_side(side)
-        requested_units = (units or state.units).copy_abs()
-        kwargs = self._close_position_kwargs(side=side, units=requested_units)
-        response = self.gateway.close_position(
-            self.account_id,
-            OandaInstrumentMapper.to_oanda(position.instrument),
-            longUnits=kwargs["longUnits"],
-            shortUnits=kwargs["shortUnits"],
-        )
-        self._raise_unexpected_order_response(response)
-        return self.order_mapper.order_from_position_close_response(
-            response,
-            position=position,
-            side=side,
-            requested_units=requested_units,
-        )
+        return self._orders.close_position(position=position, side=side, units=units)
 
     def positions(self, *, instrument: CurrencyPair | None = None) -> Sequence[Position]:
         """Return open OANDA positions."""
-        response = ensure_success(self.gateway.list_open_positions(self.account_id), 200)
-        positions = OandaPositionMapper(
-            account_currency=self.account_currency,
-        ).positions_from_response(response)
-        if instrument is None:
-            return positions
-        return tuple(position for position in positions if position.instrument == instrument)
+        return self._positions.positions(instrument=instrument)
 
     def list_orders(self, **filters: object) -> Sequence[Metadata]:
         """Return OANDA orders as raw metadata snapshots."""
-        response = ensure_success(
-            self.gateway.list_orders(self.account_id, self._clean(filters)),
-            200,
-        )
-        orders = self._get(response.body, "orders", ()) or ()
-        return tuple(self._metadata(order) for order in orders)
+        return self._orders.list_orders(**filters)
 
     def list_pending_orders(self) -> Sequence[Metadata]:
         """Return OANDA pending orders as raw metadata snapshots."""
-        response = ensure_success(self.gateway.list_pending_orders(self.account_id), 200)
-        orders = self._get(response.body, "orders", ()) or ()
-        return tuple(self._metadata(order) for order in orders)
+        return self._orders.list_pending_orders()
 
     def get_order(self, order_id: str) -> Metadata:
         """Return one OANDA order as raw metadata."""
-        response = ensure_success(self.gateway.get_order(self.account_id, order_id), 200)
-        return self.order_mapper.metadata_from_order_response(response)
+        return self._orders.get_order(order_id)
 
     def replace_order(self, order_id: str, order: Order) -> Order:
         """Replace one OANDA order."""
-        response = self.gateway.replace_order(
-            self.account_id,
-            order_id,
-            {
-                "order": {
-                    **self.order_mapper.order_kwargs(order),
-                    "type": self._order_type(order.order_type),
-                }
-            },
-            retry=True,
-        )
-        self._raise_unexpected_order_response(response)
-        return self.order_mapper.order_from_order_response(response, order)
+        return self._orders.replace_order(order_id, order)
 
     def cancel_order(self, order_id: str) -> Metadata:
         """Cancel one OANDA order."""
-        response = self.gateway.cancel_order(self.account_id, order_id, retry=True)
-        self._raise_unexpected_order_response(response)
-        return self._metadata(response.body)
+        return self._orders.cancel_order(order_id)
 
     def set_order_client_extensions(
         self,
@@ -207,46 +145,28 @@ class OandaBroker(Broker):
         comment: str | None = None,
     ) -> Metadata:
         """Set OANDA order client extensions."""
-        request = self._client_extensions(client_id=client_id, tag=tag, comment=comment)
-        response = self.gateway.set_order_client_extensions(
-            self.account_id,
+        return self._orders.set_order_client_extensions(
             order_id,
-            request,
-            retry=True,
+            client_id=client_id,
+            tag=tag,
+            comment=comment,
         )
-        self._raise_unexpected_order_response(response)
-        return self._metadata(response.body)
 
     def list_trades(self, **filters: object) -> Sequence[Trade]:
         """Return OANDA trades."""
-        response = ensure_success(
-            self.gateway.list_trades(self.account_id, self._clean(filters)),
-            200,
-        )
-        return OandaTradeMapper(account_currency=self.account_currency).trades_from_response(
-            response
-        )
+        return self._trades.list_trades(**filters)
 
     def list_open_trades(self) -> Sequence[Trade]:
         """Return OANDA open trades."""
-        response = ensure_success(self.gateway.list_open_trades(self.account_id), 200)
-        return OandaTradeMapper(account_currency=self.account_currency).trades_from_response(
-            response
-        )
+        return self._trades.list_open_trades()
 
     def get_trade(self, trade_id: str) -> Trade:
         """Return one OANDA trade."""
-        response = ensure_success(self.gateway.get_trade(self.account_id, trade_id), 200)
-        return OandaTradeMapper(account_currency=self.account_currency).trade_from_response(
-            response
-        )
+        return self._trades.get_trade(trade_id)
 
     def close_trade(self, trade_id: str, *, units: Decimal | None = None) -> Metadata:
         """Close all or part of an OANDA trade."""
-        request = {"units": str(units)} if units is not None else None
-        response = self.gateway.close_trade(self.account_id, trade_id, request, retry=True)
-        self._raise_unexpected_order_response(response)
-        return self._metadata(response.body)
+        return self._trades.close_trade(trade_id, units=units)
 
     def set_trade_client_extensions(
         self,
@@ -257,51 +177,28 @@ class OandaBroker(Broker):
         comment: str | None = None,
     ) -> Metadata:
         """Set OANDA trade client extensions."""
-        request = self._client_extensions(client_id=client_id, tag=tag, comment=comment)
-        response = self.gateway.set_trade_client_extensions(
-            self.account_id,
+        return self._trades.set_trade_client_extensions(
             trade_id,
-            request,
-            retry=True,
+            client_id=client_id,
+            tag=tag,
+            comment=comment,
         )
-        self._raise_unexpected_order_response(response)
-        return self._metadata(response.body)
 
     def set_trade_dependent_orders(self, trade_id: str, **orders: object) -> Metadata:
         """Set OANDA dependent orders for a trade."""
-        response = self.gateway.set_trade_dependent_orders(
-            self.account_id,
-            trade_id,
-            self._clean(orders),
-            retry=True,
-        )
-        self._raise_unexpected_order_response(response)
-        return self._metadata(response.body)
+        return self._trades.set_trade_dependent_orders(trade_id, **orders)
 
     def list_positions(self) -> Sequence[Position]:
         """Return all OANDA positions."""
-        response = ensure_success(self.gateway.list_positions(self.account_id), 200)
-        return OandaPositionMapper(account_currency=self.account_currency).positions_from_response(
-            response
-        )
+        return self._positions.list_positions()
 
     def list_open_positions(self) -> Sequence[Position]:
         """Return open OANDA positions."""
-        return self.positions()
+        return self._positions.list_open_positions()
 
     def get_position(self, instrument: CurrencyPair) -> Position:
         """Return one OANDA position."""
-        response = ensure_success(
-            self.gateway.get_position(self.account_id, OandaInstrumentMapper.to_oanda(instrument)),
-            200,
-        )
-        position = OandaPositionMapper(account_currency=self.account_currency).position_from_oanda(
-            self._get(response.body, "position")
-        )
-        if position is None:
-            msg = f"position not found: {instrument}"
-            raise LookupError(msg)
-        return position
+        return self._positions.get_position(instrument)
 
     def list_transactions(
         self,
@@ -312,30 +209,16 @@ class OandaBroker(Broker):
         types: Iterable[str] | None = None,
     ) -> Metadata:
         """Return OANDA transaction page metadata."""
-        response = ensure_success(
-            self.gateway.list_transactions(
-                self.account_id,
-                self._clean(
-                    {
-                        "from": self._format_time(from_time),
-                        "to": self._format_time(to_time),
-                        "pageSize": page_size,
-                        "type": ",".join(types) if types is not None else None,
-                    }
-                ),
-            ),
-            200,
+        return self._transactions.list_transactions(
+            from_time=from_time,
+            to_time=to_time,
+            page_size=page_size,
+            types=types,
         )
-        return self._metadata(response.body)
 
     def get_transaction(self, transaction_id: str) -> Transaction:
         """Return one OANDA transaction."""
-        response = ensure_success(
-            self.gateway.get_transaction(self.account_id, transaction_id), 200
-        )
-        return OandaTransactionMapper(
-            account_currency=self.account_currency
-        ).transaction_from_response(response)
+        return self._transactions.get_transaction(transaction_id)
 
     def get_transaction_range(
         self,
@@ -345,22 +228,11 @@ class OandaBroker(Broker):
         types: Iterable[str] | None = None,
     ) -> Sequence[Transaction]:
         """Return OANDA transactions by ID range."""
-        response = ensure_success(
-            self.gateway.get_transaction_range(
-                self.account_id,
-                self._clean(
-                    {
-                        "from": from_id,
-                        "to": to_id,
-                        "type": ",".join(types) if types is not None else None,
-                    }
-                ),
-            ),
-            200,
+        return self._transactions.get_transaction_range(
+            from_id=from_id,
+            to_id=to_id,
+            types=types,
         )
-        return OandaTransactionMapper(
-            account_currency=self.account_currency
-        ).transactions_from_response(response)
 
     def get_transactions_since(
         self,
@@ -369,44 +241,19 @@ class OandaBroker(Broker):
         types: Iterable[str] | None = None,
     ) -> Sequence[Transaction]:
         """Return OANDA transactions since one transaction ID."""
-        response = ensure_success(
-            self.gateway.get_transactions_since(
-                self.account_id,
-                self._clean(
-                    {
-                        "id": transaction_id,
-                        "type": ",".join(types) if types is not None else None,
-                    }
-                ),
-            ),
-            200,
-        )
-        return OandaTransactionMapper(
-            account_currency=self.account_currency
-        ).transactions_from_response(response)
+        return self._transactions.get_transactions_since(transaction_id, types=types)
 
     def stream_transactions(self) -> Iterable[Transaction]:
         """Yield OANDA transaction stream updates."""
-        response = self.gateway.stream_transactions(self.account_id)
-        mapper = OandaTransactionMapper(account_currency=self.account_currency)
-        for part_type, value in response.parts():
-            if part_type.endswith("Heartbeat"):
-                continue
-            yield mapper.transaction_from_oanda(value)
+        return self._transactions.stream_transactions()
 
     @staticmethod
     def _close_position_kwargs(*, side: PositionSide, units: Decimal) -> dict[str, str]:
-        amount = str(units)
-        if side == PositionSide.LONG:
-            return {"longUnits": amount, "shortUnits": "NONE"}
-        return {"longUnits": "NONE", "shortUnits": amount}
+        return close_position_kwargs(side=side, units=units)
 
     @staticmethod
     def _raise_unexpected_order_response(response: object) -> None:
-        status = int(getattr(response, "status", 0) or 0)
-        if status in {200, 201, 400, 404}:
-            return
-        raise error_from_response(response)
+        raise_unexpected_order_response(response)
 
     def _format_time(self, value: datetime | None) -> str | None:
         if value is None:
@@ -415,31 +262,15 @@ class OandaBroker(Broker):
 
     @staticmethod
     def _metadata(value: Any) -> Metadata:
-        if hasattr(value, "model_dump"):
-            return Metadata.model_validate(
-                value.model_dump(mode="json", by_alias=True, exclude_none=True)
-            )
-        if isinstance(value, Mapping):
-            return Metadata.model_validate(dict(value))
-        return Metadata.model_validate(
-            {
-                key: item
-                for key in dir(value)
-                if not key.startswith("_") and not callable(item := getattr(value, key))
-            }
-        )
+        return payload.metadata(value)
 
     @staticmethod
     def _get(value: Any, key: str, default: Any = None) -> Any:
-        if value is None:
-            return default
-        if isinstance(value, Mapping):
-            return value.get(key, default)
-        return getattr(value, key, default)
+        return payload.get(value, key, default)
 
     @staticmethod
     def _clean(values: Mapping[str, object]) -> dict[str, object]:
-        return {key: value for key, value in values.items() if value is not None}
+        return payload.clean(values)
 
     @classmethod
     def _client_extensions(
@@ -449,16 +280,8 @@ class OandaBroker(Broker):
         tag: str | None,
         comment: str | None,
     ) -> dict[str, dict[str, str]]:
-        extensions = cls._clean({"id": client_id, "tag": tag, "comment": comment})
-        return {"clientExtensions": {key: str(value) for key, value in extensions.items()}}
+        return payload.client_extensions(client_id=client_id, tag=tag, comment=comment)
 
     @staticmethod
-    def _order_type(order_type: OrderType) -> str:
-        if order_type == OrderType.MARKET:
-            return "MARKET"
-        if order_type == OrderType.LIMIT:
-            return "LIMIT"
-        if order_type == OrderType.STOP:
-            return "STOP"
-        msg = f"unsupported OANDA order type: {order_type}"
-        raise ValueError(msg)
+    def _order_type(order_type_: OrderType) -> str:
+        return order_type(order_type_)

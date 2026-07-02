@@ -5,6 +5,7 @@ from importlib.metadata import version
 from oanda.accounts import OandaAccountManager
 from oanda.broker import OandaBroker
 from oanda.config import OandaEnvironment, OandaSettings
+from oanda.constants import OANDA_PROVIDER
 from oanda.domain import (
     OandaAccount,
     OandaAccountSummary,
@@ -41,6 +42,7 @@ from oanda.provider import OandaProvider
 from oanda.source import OandaDataSource
 
 __all__ = [
+    "OANDA_PROVIDER",
     "OandaAccount",
     "OandaAccountManager",
     "OandaAccountMapper",

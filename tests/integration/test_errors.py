@@ -32,13 +32,14 @@ class AuthErrorOpener:
         )
 
 
-def test_gateway_http_error_integrates_with_error_classification() -> None:
-    gateway = OandaGateway(
-        access_token="token",
-        hostname="api.example.test",
-        stream_hostname="stream.example.test",
-        opener=AuthErrorOpener(),
-    )
+class TestErrors:
+    def test_gateway_http_error_integrates_with_error_classification(self) -> None:
+        gateway = OandaGateway(
+            access_token="token",
+            hostname="api.example.test",
+            stream_hostname="stream.example.test",
+            opener=AuthErrorOpener(),
+        )
 
-    with pytest.raises(OandaAuthenticationError):
-        gateway.list_accounts()
+        with pytest.raises(OandaAuthenticationError):
+            gateway.list_accounts()

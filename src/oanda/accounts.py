@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
 
@@ -10,16 +9,17 @@ from core import (
     Account,
     AccountId,
     AccountManager,
-    AccountProvider,
     AccountSummary,
     CurrencyPair,
     Metadata,
 )
 
-from oanda.config import OandaEnvironment, OandaSettings
+import oanda.payload as payload
+from oanda.config import OandaSettings
+from oanda.constants import OANDA_PROVIDER
 from oanda.errors import ensure_success
 from oanda.gateway import OandaGateway
-from oanda.mappers import OandaAccountMapper, OandaInstrumentMapper
+from oanda.mappers import OandaAccountMapper
 
 
 class OandaAccountManager(AccountManager):
@@ -39,45 +39,6 @@ class OandaAccountManager(AccountManager):
         """Create an OANDA account manager from settings."""
         return cls(
             gateway=OandaGateway.from_settings(settings),
-        )
-
-    @classmethod
-    def from_credentials(
-        cls,
-        *,
-        access_token: str,
-        environment: OandaEnvironment = OandaEnvironment.PRACTICE,
-        hostname: str | None = None,
-        stream_hostname: str | None = None,
-        port: int = 443,
-        ssl: bool = True,
-        application: str = "AutoForexV2",
-        stream_chunk_size: int = 512,
-        stream_timeout: int = 60,
-        poll_timeout: int = 10,
-        retry_attempts: int = 3,
-        retry_initial_seconds: float = 0.25,
-        retry_max_seconds: float = 4.0,
-        retry_multiplier: float = 2.0,
-    ) -> OandaAccountManager:
-        """Create an OANDA account manager directly from credentials."""
-        return cls(
-            gateway=OandaGateway.from_credentials(
-                access_token=access_token,
-                environment=environment,
-                hostname=hostname,
-                stream_hostname=stream_hostname,
-                port=port,
-                ssl=ssl,
-                application=application,
-                stream_chunk_size=stream_chunk_size,
-                stream_timeout=stream_timeout,
-                poll_timeout=poll_timeout,
-                retry_attempts=retry_attempts,
-                retry_initial_seconds=retry_initial_seconds,
-                retry_max_seconds=retry_max_seconds,
-                retry_multiplier=retry_multiplier,
-            ),
         )
 
     def list_accounts(self) -> tuple[Account, ...]:
@@ -100,22 +61,10 @@ class OandaAccountManager(AccountManager):
         )
         return self.mapper.summary_from_response(response)
 
-    def get_account_instruments(
-        self,
-        account_id: AccountId,
-        *,
-        instruments: tuple[CurrencyPair, ...] | None = None,
-    ) -> tuple[CurrencyPair, ...]:
+    def get_account_instruments(self, account_id: AccountId) -> tuple[CurrencyPair, ...]:
         """Return tradable instruments for an account."""
-        request: dict[str, str] | None = None
-        if instruments is not None:
-            request = {
-                "instruments": ",".join(
-                    OandaInstrumentMapper.to_oanda(item) for item in instruments
-                )
-            }
         response = ensure_success(
-            self.gateway.get_account_instruments(str(account_id), request),
+            self.gateway.get_account_instruments(str(account_id)),
             200,
         )
         items = self._get(response.body, "instruments", ()) or ()
@@ -145,7 +94,7 @@ class OandaAccountManager(AccountManager):
         body = self._metadata(response.body)
         return Account(
             id=account_id,
-            provider=AccountProvider.OANDA,
+            provider=OANDA_PROVIDER,
             alias=alias,
             metadata=body,
         )
@@ -168,25 +117,11 @@ class OandaAccountManager(AccountManager):
 
     @staticmethod
     def _metadata(value: Any) -> Metadata:
-        if hasattr(value, "model_dump"):
-            return Metadata.model_validate(
-                value.model_dump(mode="json", by_alias=True, exclude_none=True)
-            )
-        if isinstance(value, Mapping):
-            return Metadata.model_validate(dict(value))
-        return Metadata.model_validate(
-            {
-                key: item
-                for key in dir(value)
-                if not key.startswith("_") and not callable(item := getattr(value, key))
-            }
-        )
+        return payload.metadata(value)
 
     @staticmethod
     def _get(value: Any, key: str, default: Any = None) -> Any:
-        if isinstance(value, Mapping):
-            return value.get(key, default)
-        return getattr(value, key, default)
+        return payload.get(value, key, default)
 
     @staticmethod
     def _currency_pair_or_none(value: Any) -> CurrencyPair | None:

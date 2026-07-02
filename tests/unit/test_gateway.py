@@ -38,639 +38,669 @@ class FakeStreamingHTTPResponse:
         return iter(())
 
 
-def test_retry_policy_validates_values() -> None:
-    with pytest.raises(ValueError, match="retry attempts"):
-        OandaRetryPolicy(attempts=0)
-    with pytest.raises(ValueError, match="retry initial seconds"):
-        OandaRetryPolicy(initial_seconds=-1)
+class TestGateway:
+    def test_retry_policy_validates_values(self) -> None:
+        with pytest.raises(ValueError, match="retry attempts"):
+            OandaRetryPolicy(attempts=0)
+        with pytest.raises(ValueError, match="retry initial seconds"):
+            OandaRetryPolicy(initial_seconds=-1)
 
+    def test_gateway_from_settings_uses_settings_values(self) -> None:
+        settings = OandaSettings(
+            account_id="001",
+            access_token=SecretStr("token"),
+            environment=OandaEnvironment.LIVE,
+            application="UnitTest",
+        )
 
-def test_gateway_from_settings_uses_settings_values() -> None:
-    settings = OandaSettings(
-        account_id="001",
-        access_token=SecretStr("token"),
-        environment=OandaEnvironment.LIVE,
-        application="UnitTest",
-    )
+        gateway = OandaGateway.from_settings(settings)
 
-    gateway = OandaGateway.from_settings(settings)
+        assert gateway.access_token == "token"
+        assert gateway.hostname == "api-fxtrade.oanda.com"
+        assert gateway.stream_hostname == "stream-fxtrade.oanda.com"
+        assert gateway.application == "UnitTest"
 
-    assert gateway.access_token == "token"
-    assert gateway.hostname == "api-fxtrade.oanda.com"
-    assert gateway.stream_hostname == "stream-fxtrade.oanda.com"
-    assert gateway.application == "UnitTest"
+    def test_gateway_request_uses_fake_opener_and_parses_typed_response(self) -> None:
+        opener = FakeOpener([FakeHTTPResponse(200, {"accounts": [{"id": "001"}]})])
+        gateway = OandaGateway(
+            access_token="token",
+            hostname="api.example.test",
+            stream_hostname="stream.example.test",
+            opener=opener,
+        )
 
+        response = gateway.list_accounts()
 
-def test_gateway_request_uses_fake_opener_and_parses_typed_response() -> None:
-    opener = FakeOpener([FakeHTTPResponse(200, {"accounts": [{"id": "001"}]})])
-    gateway = OandaGateway(
-        access_token="token",
-        hostname="api.example.test",
-        stream_hostname="stream.example.test",
-        opener=opener,
-    )
+        assert isinstance(response.body, AccountsResponse)
+        assert response.body.accounts[0].id == "001"
+        request = opener.requests[0]
+        assert request.full_url == "https://api.example.test/v3/accounts"
+        assert request.headers["Authorization"] == "Bearer token"
 
-    response = gateway.list_accounts()
+    def test_gateway_builds_json_body_and_query_values(self) -> None:
+        opener = FakeOpener([FakeHTTPResponse(201, {"orderCreateTransaction": {"id": "10"}})])
+        gateway = OandaGateway(
+            access_token="token",
+            hostname="api.example.test",
+            stream_hostname="stream.example.test",
+            opener=opener,
+        )
 
-    assert isinstance(response.body, AccountsResponse)
-    assert response.body.accounts[0].id == "001"
-    request = opener.requests[0]
-    assert request.full_url == "https://api.example.test/v3/accounts"
-    assert request.headers["Authorization"] == "Bearer token"
+        gateway.create_order(
+            "001",
+            {"order": {"type": "MARKET", "instrument": "USD_JPY", "units": "1000"}},
+        )
 
+        request = opener.requests[0]
+        body = json.loads(request.data.decode())
+        assert body["order"]["type"] == "MARKET"
+        assert request.full_url == "https://api.example.test/v3/accounts/001/orders"
 
-def test_gateway_builds_json_body_and_query_values() -> None:
-    opener = FakeOpener([FakeHTTPResponse(201, {"orderCreateTransaction": {"id": "10"}})])
-    gateway = OandaGateway(
-        access_token="token",
-        hostname="api.example.test",
-        stream_hostname="stream.example.test",
-        opener=opener,
-    )
-
-    gateway.create_order(
-        "001",
-        {"order": {"type": "MARKET", "instrument": "USD_JPY", "units": "1000"}},
-    )
-
-    request = opener.requests[0]
-    body = json.loads(request.data.decode())
-    assert body["order"]["type"] == "MARKET"
-    assert request.full_url == "https://api.example.test/v3/accounts/001/orders"
-
-
-@pytest.mark.parametrize(
-    ("call", "status", "method", "path", "query", "body"),
-    [
-        (
-            lambda gateway: gateway.request(
-                "PATCH", "/v3/accounts/001/custom", query={"a": 1}, body={"b": 2}
-            ),
-            200,
-            "PATCH",
-            "/v3/accounts/001/custom",
-            {"a": "1"},
-            {"b": 2},
-        ),
-        (lambda gateway: gateway.list_accounts(), 200, "GET", "/v3/accounts", {}, None),
-        (
-            lambda gateway: gateway.get_account("001"),
-            200,
-            "GET",
-            "/v3/accounts/001",
-            {},
-            None,
-        ),
-        (
-            lambda gateway: gateway.get_account_summary("001"),
-            200,
-            "GET",
-            "/v3/accounts/001/summary",
-            {},
-            None,
-        ),
-        (
-            lambda gateway: gateway.get_account_instruments(
-                "001", {"instruments": ("USD_JPY", "EUR_USD")}
-            ),
-            200,
-            "GET",
-            "/v3/accounts/001/instruments",
-            {"instruments": "USD_JPY,EUR_USD"},
-            None,
-        ),
-        (
-            lambda gateway: gateway.configure_account("001", {"alias": "primary"}),
-            200,
-            "PATCH",
-            "/v3/accounts/001/configuration",
-            {},
-            {"alias": "primary"},
-        ),
-        (
-            lambda gateway: gateway.get_account_changes("001", {"sinceTransactionID": "10"}),
-            200,
-            "GET",
-            "/v3/accounts/001/changes",
-            {"sinceTransactionID": "10"},
-            None,
-        ),
-        (
-            lambda gateway: gateway.create_order("001", {"order": {"type": "MARKET"}}),
-            201,
-            "POST",
-            "/v3/accounts/001/orders",
-            {},
-            {"order": {"type": "MARKET"}},
-        ),
-        (
-            lambda gateway: gateway.list_orders("001", {"count": 10, "state": "PENDING"}),
-            200,
-            "GET",
-            "/v3/accounts/001/orders",
-            {"count": "10", "state": "PENDING"},
-            None,
-        ),
-        (
-            lambda gateway: gateway.list_pending_orders("001"),
-            200,
-            "GET",
-            "/v3/accounts/001/pendingOrders",
-            {},
-            None,
-        ),
-        (
-            lambda gateway: gateway.get_order("001", "100"),
-            200,
-            "GET",
-            "/v3/accounts/001/orders/100",
-            {},
-            None,
-        ),
-        (
-            lambda gateway: gateway.replace_order("001", "100", {"order": {"type": "LIMIT"}}),
-            201,
-            "PUT",
-            "/v3/accounts/001/orders/100",
-            {},
-            {"order": {"type": "LIMIT"}},
-        ),
-        (
-            lambda gateway: gateway.cancel_order("001", "100"),
-            200,
-            "PUT",
-            "/v3/accounts/001/orders/100/cancel",
-            {},
-            None,
-        ),
-        (
-            lambda gateway: gateway.set_order_client_extensions(
-                "001", "100", {"clientExtensions": {"id": "client-100"}}
-            ),
-            200,
-            "PUT",
-            "/v3/accounts/001/orders/100/clientExtensions",
-            {},
-            {"clientExtensions": {"id": "client-100"}},
-        ),
-        (
-            lambda gateway: gateway.create_market_order("001", instrument="USD_JPY", units="1"),
-            201,
-            "POST",
-            "/v3/accounts/001/orders",
-            {},
-            {"order": {"instrument": "USD_JPY", "units": "1", "type": "MARKET"}},
-        ),
-        (
-            lambda gateway: gateway.create_limit_order(
-                "001", instrument="USD_JPY", units="1", price="100.00"
-            ),
-            201,
-            "POST",
-            "/v3/accounts/001/orders",
-            {},
-            {"order": {"instrument": "USD_JPY", "units": "1", "price": "100.00", "type": "LIMIT"}},
-        ),
-        (
-            lambda gateway: gateway.replace_limit_order(
-                "001", "100", instrument="USD_JPY", units="1", price="100.00"
-            ),
-            201,
-            "PUT",
-            "/v3/accounts/001/orders/100",
-            {},
-            {"order": {"instrument": "USD_JPY", "units": "1", "price": "100.00", "type": "LIMIT"}},
-        ),
-        (
-            lambda gateway: gateway.create_stop_order(
-                "001", instrument="USD_JPY", units="1", price="100.00"
-            ),
-            201,
-            "POST",
-            "/v3/accounts/001/orders",
-            {},
-            {"order": {"instrument": "USD_JPY", "units": "1", "price": "100.00", "type": "STOP"}},
-        ),
-        (
-            lambda gateway: gateway.replace_stop_order(
-                "001", "100", instrument="USD_JPY", units="1", price="100.00"
-            ),
-            201,
-            "PUT",
-            "/v3/accounts/001/orders/100",
-            {},
-            {"order": {"instrument": "USD_JPY", "units": "1", "price": "100.00", "type": "STOP"}},
-        ),
-        (
-            lambda gateway: gateway.create_market_if_touched_order(
-                "001", instrument="USD_JPY", units="1", price="100.00"
-            ),
-            201,
-            "POST",
-            "/v3/accounts/001/orders",
-            {},
-            {
-                "order": {
-                    "instrument": "USD_JPY",
-                    "units": "1",
-                    "price": "100.00",
-                    "type": "MARKET_IF_TOUCHED",
-                }
-            },
-        ),
-        (
-            lambda gateway: gateway.replace_market_if_touched_order(
-                "001", "100", instrument="USD_JPY", units="1", price="100.00"
-            ),
-            201,
-            "PUT",
-            "/v3/accounts/001/orders/100",
-            {},
-            {
-                "order": {
-                    "instrument": "USD_JPY",
-                    "units": "1",
-                    "price": "100.00",
-                    "type": "MARKET_IF_TOUCHED",
-                }
-            },
-        ),
-        (
-            lambda gateway: gateway.create_take_profit_order("001", tradeID="200", price="151.00"),
-            201,
-            "POST",
-            "/v3/accounts/001/orders",
-            {},
-            {"order": {"tradeID": "200", "price": "151.00", "type": "TAKE_PROFIT"}},
-        ),
-        (
-            lambda gateway: gateway.replace_take_profit_order(
-                "001", "100", tradeID="200", price="151.00"
-            ),
-            201,
-            "PUT",
-            "/v3/accounts/001/orders/100",
-            {},
-            {"order": {"tradeID": "200", "price": "151.00", "type": "TAKE_PROFIT"}},
-        ),
-        (
-            lambda gateway: gateway.create_stop_loss_order("001", tradeID="200", price="149.00"),
-            201,
-            "POST",
-            "/v3/accounts/001/orders",
-            {},
-            {"order": {"tradeID": "200", "price": "149.00", "type": "STOP_LOSS"}},
-        ),
-        (
-            lambda gateway: gateway.replace_stop_loss_order(
-                "001", "100", tradeID="200", price="149.00"
-            ),
-            201,
-            "PUT",
-            "/v3/accounts/001/orders/100",
-            {},
-            {"order": {"tradeID": "200", "price": "149.00", "type": "STOP_LOSS"}},
-        ),
-        (
-            lambda gateway: gateway.create_trailing_stop_loss_order(
-                "001", tradeID="200", distance="0.20"
-            ),
-            201,
-            "POST",
-            "/v3/accounts/001/orders",
-            {},
-            {"order": {"tradeID": "200", "distance": "0.20", "type": "TRAILING_STOP_LOSS"}},
-        ),
-        (
-            lambda gateway: gateway.replace_trailing_stop_loss_order(
-                "001", "100", tradeID="200", distance="0.20"
-            ),
-            201,
-            "PUT",
-            "/v3/accounts/001/orders/100",
-            {},
-            {"order": {"tradeID": "200", "distance": "0.20", "type": "TRAILING_STOP_LOSS"}},
-        ),
-        (
-            lambda gateway: gateway.list_positions("001"),
-            200,
-            "GET",
-            "/v3/accounts/001/positions",
-            {},
-            None,
-        ),
-        (
-            lambda gateway: gateway.list_open_positions("001"),
-            200,
-            "GET",
-            "/v3/accounts/001/openPositions",
-            {},
-            None,
-        ),
-        (
-            lambda gateway: gateway.get_position("001", "USD_JPY"),
-            200,
-            "GET",
-            "/v3/accounts/001/positions/USD_JPY",
-            {},
-            None,
-        ),
-        (
-            lambda gateway: gateway.close_position("001", "USD_JPY", {"longUnits": "ALL"}),
-            200,
-            "PUT",
-            "/v3/accounts/001/positions/USD_JPY/close",
-            {},
-            {"longUnits": "ALL"},
-        ),
-        (
-            lambda gateway: gateway.get_account_prices(
-                "001", instruments="USD_JPY", includeHomeConversions=True
-            ),
-            200,
-            "GET",
-            "/v3/accounts/001/pricing",
-            {"instruments": "USD_JPY", "includeHomeConversions": "true"},
-            None,
-        ),
-        (
-            lambda gateway: gateway.get_account_candles(
-                "001", "USD_JPY", granularity="M1", count=1
-            ),
-            200,
-            "GET",
-            "/v3/accounts/001/instruments/USD_JPY/candles",
-            {"granularity": "M1", "count": "1"},
-            None,
-        ),
-        (
-            lambda gateway: gateway.get_instrument_candles("USD_JPY", granularity="M1", count=1),
-            200,
-            "GET",
-            "/v3/instruments/USD_JPY/candles",
-            {"granularity": "M1", "count": "1"},
-            None,
-        ),
-        (
-            lambda gateway: gateway.get_instrument_prices("USD_JPY", since="2026-01-01T00:00:00Z"),
-            200,
-            "GET",
-            "/v3/instruments/USD_JPY/prices",
-            {"since": "2026-01-01T00:00:00Z"},
-            None,
-        ),
-        (
-            lambda gateway: gateway.list_trades("001", {"count": 10, "state": "OPEN"}),
-            200,
-            "GET",
-            "/v3/accounts/001/trades",
-            {"count": "10", "state": "OPEN"},
-            None,
-        ),
-        (
-            lambda gateway: gateway.list_open_trades("001"),
-            200,
-            "GET",
-            "/v3/accounts/001/openTrades",
-            {},
-            None,
-        ),
-        (
-            lambda gateway: gateway.get_trade("001", "200"),
-            200,
-            "GET",
-            "/v3/accounts/001/trades/200",
-            {},
-            None,
-        ),
-        (
-            lambda gateway: gateway.close_trade("001", "200", {"units": "ALL"}),
-            200,
-            "PUT",
-            "/v3/accounts/001/trades/200/close",
-            {},
-            {"units": "ALL"},
-        ),
-        (
-            lambda gateway: gateway.set_trade_client_extensions(
-                "001", "200", {"clientExtensions": {"id": "trade-200"}}
-            ),
-            200,
-            "PUT",
-            "/v3/accounts/001/trades/200/clientExtensions",
-            {},
-            {"clientExtensions": {"id": "trade-200"}},
-        ),
-        (
-            lambda gateway: gateway.set_trade_dependent_orders(
-                "001", "200", {"takeProfit": {"price": "151.00"}}
-            ),
-            200,
-            "PUT",
-            "/v3/accounts/001/trades/200/orders",
-            {},
-            {"takeProfit": {"price": "151.00"}},
-        ),
-        (
-            lambda gateway: gateway.list_transactions("001", {"pageSize": 100}),
-            200,
-            "GET",
-            "/v3/accounts/001/transactions",
-            {"pageSize": "100"},
-            None,
-        ),
-        (
-            lambda gateway: gateway.get_transaction("001", "300"),
-            200,
-            "GET",
-            "/v3/accounts/001/transactions/300",
-            {},
-            None,
-        ),
-        (
-            lambda gateway: gateway.get_transaction_range("001", from_id="300", to_id="301"),
-            200,
-            "GET",
-            "/v3/accounts/001/transactions/idrange",
-            {"from": "300", "to": "301"},
-            None,
-        ),
-        (
-            lambda gateway: gateway.get_transactions_since("001", id="300"),
-            200,
-            "GET",
-            "/v3/accounts/001/transactions/sinceid",
-            {"id": "300"},
-            None,
-        ),
-    ],
-)
-def test_gateway_endpoint_methods_build_expected_requests(
-    call: Callable[[OandaGateway], object],
-    status: int,
-    method: str,
-    path: str,
-    query: dict[str, str],
-    body: dict[str, Any] | None,
-) -> None:
-    opener = EndpointOpener([FakeHTTPResponse(status, {})])
-    gateway = OandaGateway(
-        access_token="token",
-        hostname="api.example.test",
-        stream_hostname="stream.example.test",
-        opener=opener,
-    )
-
-    call(gateway)
-
-    request = opener.requests[0]
-    parsed = urlparse(request.full_url)
-    assert request.get_method() == method
-    assert parsed.scheme == "https"
-    assert parsed.netloc == "api.example.test"
-    assert parsed.path == path
-    assert {key: values[0] for key, values in parse_qs(parsed.query).items()} == query
-    if body is None:
-        assert request.data is None
-    else:
-        assert json.loads(request.data.decode()) == body
-
-
-@pytest.mark.parametrize(
-    ("call", "path", "query", "stream_kind"),
-    [
-        (
-            lambda gateway: gateway.stream_account_prices(
-                "001", instruments="USD_JPY", snapshot=True
-            ),
-            "/v3/accounts/001/pricing/stream",
-            {"instruments": "USD_JPY", "snapshot": "true"},
-            "pricing",
-        ),
-        (
-            lambda gateway: gateway.stream_transactions("001"),
-            "/v3/accounts/001/transactions/stream",
-            {},
-            "transactions",
-        ),
-    ],
-)
-def test_gateway_stream_endpoint_methods_build_expected_requests(
-    call: Callable[[OandaGateway], OandaResponse[None]],
-    path: str,
-    query: dict[str, str],
-    stream_kind: str,
-) -> None:
-    opener = EndpointOpener([FakeStreamingHTTPResponse()])
-    gateway = OandaGateway(
-        access_token="token",
-        hostname="api.example.test",
-        stream_hostname="stream.example.test",
-        opener=opener,
-    )
-
-    response = call(gateway)
-
-    request = opener.requests[0]
-    parsed = urlparse(request.full_url)
-    assert request.get_method() == "GET"
-    assert parsed.scheme == "https"
-    assert parsed.netloc == "stream.example.test"
-    assert parsed.path == path
-    assert {key: values[0] for key, values in parse_qs(parsed.query).items()} == query
-    assert isinstance(response.raw, OandaStreamResponse)
-    assert response.raw.stream_kind == stream_kind
-
-
-def test_gateway_datetime_to_str_formats_rfc3339() -> None:
-    gateway = OandaGateway(
-        access_token="token",
-        hostname="api.example.test",
-        stream_hostname="stream.example.test",
-        opener=FakeOpener([]),
-    )
-
-    assert gateway.datetime_to_str(datetime(2026, 1, 1, tzinfo=UTC)) == "2026-01-01T00:00:00Z"
-
-
-def test_gateway_maps_http_error_without_real_network() -> None:
-    class ErrorOpener:
-        def __init__(self) -> None:
-            self.requests: list[Any] = []
-
-        def open(self, request: Any, timeout: int) -> Any:
-            from urllib.error import HTTPError
-
-            _ = timeout
-            self.requests.append(request)
-            response = FakeHTTPResponse(
-                401,
-                {"errorCode": "UNAUTHORIZED", "errorMessage": "bad token"},
-                reason="Unauthorized",
-            )
-            raise HTTPError(
-                url="https://api.example.test/v3/accounts",
-                code=401,
-                msg="Unauthorized",
-                hdrs=cast(Any, response.headers),
-                fp=cast(Any, response),
-            )
-
-    gateway = OandaGateway(
-        access_token="token",
-        hostname="api.example.test",
-        stream_hostname="stream.example.test",
-        opener=ErrorOpener(),
-    )
-
-    with pytest.raises(OandaAuthenticationError):
-        gateway.list_accounts()
-
-
-def test_gateway_retries_retryable_api_errors_without_real_network() -> None:
-    opener = FakeOpener(
+    @pytest.mark.parametrize(
+        ("call", "status", "method", "path", "query", "body"),
         [
-            FakeHTTPResponse(
-                500,
-                {"errorCode": "INTERNAL_SERVER_ERROR", "errorMessage": "temporary failure"},
-                reason="Server Error",
+            (
+                lambda gateway: gateway.request(
+                    "PATCH", "/v3/accounts/001/custom", query={"a": 1}, body={"b": 2}
+                ),
+                200,
+                "PATCH",
+                "/v3/accounts/001/custom",
+                {"a": "1"},
+                {"b": 2},
             ),
-            FakeHTTPResponse(200, {"accounts": []}),
-        ]
+            (lambda gateway: gateway.list_accounts(), 200, "GET", "/v3/accounts", {}, None),
+            (
+                lambda gateway: gateway.get_account("001"),
+                200,
+                "GET",
+                "/v3/accounts/001",
+                {},
+                None,
+            ),
+            (
+                lambda gateway: gateway.get_account_summary("001"),
+                200,
+                "GET",
+                "/v3/accounts/001/summary",
+                {},
+                None,
+            ),
+            (
+                lambda gateway: gateway.get_account_instruments(
+                    "001", {"instruments": ("USD_JPY", "EUR_USD")}
+                ),
+                200,
+                "GET",
+                "/v3/accounts/001/instruments",
+                {"instruments": "USD_JPY,EUR_USD"},
+                None,
+            ),
+            (
+                lambda gateway: gateway.configure_account("001", {"alias": "primary"}),
+                200,
+                "PATCH",
+                "/v3/accounts/001/configuration",
+                {},
+                {"alias": "primary"},
+            ),
+            (
+                lambda gateway: gateway.get_account_changes("001", {"sinceTransactionID": "10"}),
+                200,
+                "GET",
+                "/v3/accounts/001/changes",
+                {"sinceTransactionID": "10"},
+                None,
+            ),
+            (
+                lambda gateway: gateway.create_order("001", {"order": {"type": "MARKET"}}),
+                201,
+                "POST",
+                "/v3/accounts/001/orders",
+                {},
+                {"order": {"type": "MARKET"}},
+            ),
+            (
+                lambda gateway: gateway.list_orders("001", {"count": 10, "state": "PENDING"}),
+                200,
+                "GET",
+                "/v3/accounts/001/orders",
+                {"count": "10", "state": "PENDING"},
+                None,
+            ),
+            (
+                lambda gateway: gateway.list_pending_orders("001"),
+                200,
+                "GET",
+                "/v3/accounts/001/pendingOrders",
+                {},
+                None,
+            ),
+            (
+                lambda gateway: gateway.get_order("001", "100"),
+                200,
+                "GET",
+                "/v3/accounts/001/orders/100",
+                {},
+                None,
+            ),
+            (
+                lambda gateway: gateway.replace_order("001", "100", {"order": {"type": "LIMIT"}}),
+                201,
+                "PUT",
+                "/v3/accounts/001/orders/100",
+                {},
+                {"order": {"type": "LIMIT"}},
+            ),
+            (
+                lambda gateway: gateway.cancel_order("001", "100"),
+                200,
+                "PUT",
+                "/v3/accounts/001/orders/100/cancel",
+                {},
+                None,
+            ),
+            (
+                lambda gateway: gateway.set_order_client_extensions(
+                    "001", "100", {"clientExtensions": {"id": "client-100"}}
+                ),
+                200,
+                "PUT",
+                "/v3/accounts/001/orders/100/clientExtensions",
+                {},
+                {"clientExtensions": {"id": "client-100"}},
+            ),
+            (
+                lambda gateway: gateway.create_market_order("001", instrument="USD_JPY", units="1"),
+                201,
+                "POST",
+                "/v3/accounts/001/orders",
+                {},
+                {"order": {"instrument": "USD_JPY", "units": "1", "type": "MARKET"}},
+            ),
+            (
+                lambda gateway: gateway.create_limit_order(
+                    "001", instrument="USD_JPY", units="1", price="100.00"
+                ),
+                201,
+                "POST",
+                "/v3/accounts/001/orders",
+                {},
+                {
+                    "order": {
+                        "instrument": "USD_JPY",
+                        "units": "1",
+                        "price": "100.00",
+                        "type": "LIMIT",
+                    }
+                },
+            ),
+            (
+                lambda gateway: gateway.replace_limit_order(
+                    "001", "100", instrument="USD_JPY", units="1", price="100.00"
+                ),
+                201,
+                "PUT",
+                "/v3/accounts/001/orders/100",
+                {},
+                {
+                    "order": {
+                        "instrument": "USD_JPY",
+                        "units": "1",
+                        "price": "100.00",
+                        "type": "LIMIT",
+                    }
+                },
+            ),
+            (
+                lambda gateway: gateway.create_stop_order(
+                    "001", instrument="USD_JPY", units="1", price="100.00"
+                ),
+                201,
+                "POST",
+                "/v3/accounts/001/orders",
+                {},
+                {
+                    "order": {
+                        "instrument": "USD_JPY",
+                        "units": "1",
+                        "price": "100.00",
+                        "type": "STOP",
+                    }
+                },
+            ),
+            (
+                lambda gateway: gateway.replace_stop_order(
+                    "001", "100", instrument="USD_JPY", units="1", price="100.00"
+                ),
+                201,
+                "PUT",
+                "/v3/accounts/001/orders/100",
+                {},
+                {
+                    "order": {
+                        "instrument": "USD_JPY",
+                        "units": "1",
+                        "price": "100.00",
+                        "type": "STOP",
+                    }
+                },
+            ),
+            (
+                lambda gateway: gateway.create_market_if_touched_order(
+                    "001", instrument="USD_JPY", units="1", price="100.00"
+                ),
+                201,
+                "POST",
+                "/v3/accounts/001/orders",
+                {},
+                {
+                    "order": {
+                        "instrument": "USD_JPY",
+                        "units": "1",
+                        "price": "100.00",
+                        "type": "MARKET_IF_TOUCHED",
+                    }
+                },
+            ),
+            (
+                lambda gateway: gateway.replace_market_if_touched_order(
+                    "001", "100", instrument="USD_JPY", units="1", price="100.00"
+                ),
+                201,
+                "PUT",
+                "/v3/accounts/001/orders/100",
+                {},
+                {
+                    "order": {
+                        "instrument": "USD_JPY",
+                        "units": "1",
+                        "price": "100.00",
+                        "type": "MARKET_IF_TOUCHED",
+                    }
+                },
+            ),
+            (
+                lambda gateway: gateway.create_take_profit_order(
+                    "001", tradeID="200", price="151.00"
+                ),
+                201,
+                "POST",
+                "/v3/accounts/001/orders",
+                {},
+                {"order": {"tradeID": "200", "price": "151.00", "type": "TAKE_PROFIT"}},
+            ),
+            (
+                lambda gateway: gateway.replace_take_profit_order(
+                    "001", "100", tradeID="200", price="151.00"
+                ),
+                201,
+                "PUT",
+                "/v3/accounts/001/orders/100",
+                {},
+                {"order": {"tradeID": "200", "price": "151.00", "type": "TAKE_PROFIT"}},
+            ),
+            (
+                lambda gateway: gateway.create_stop_loss_order(
+                    "001", tradeID="200", price="149.00"
+                ),
+                201,
+                "POST",
+                "/v3/accounts/001/orders",
+                {},
+                {"order": {"tradeID": "200", "price": "149.00", "type": "STOP_LOSS"}},
+            ),
+            (
+                lambda gateway: gateway.replace_stop_loss_order(
+                    "001", "100", tradeID="200", price="149.00"
+                ),
+                201,
+                "PUT",
+                "/v3/accounts/001/orders/100",
+                {},
+                {"order": {"tradeID": "200", "price": "149.00", "type": "STOP_LOSS"}},
+            ),
+            (
+                lambda gateway: gateway.create_trailing_stop_loss_order(
+                    "001", tradeID="200", distance="0.20"
+                ),
+                201,
+                "POST",
+                "/v3/accounts/001/orders",
+                {},
+                {"order": {"tradeID": "200", "distance": "0.20", "type": "TRAILING_STOP_LOSS"}},
+            ),
+            (
+                lambda gateway: gateway.replace_trailing_stop_loss_order(
+                    "001", "100", tradeID="200", distance="0.20"
+                ),
+                201,
+                "PUT",
+                "/v3/accounts/001/orders/100",
+                {},
+                {"order": {"tradeID": "200", "distance": "0.20", "type": "TRAILING_STOP_LOSS"}},
+            ),
+            (
+                lambda gateway: gateway.list_positions("001"),
+                200,
+                "GET",
+                "/v3/accounts/001/positions",
+                {},
+                None,
+            ),
+            (
+                lambda gateway: gateway.list_open_positions("001"),
+                200,
+                "GET",
+                "/v3/accounts/001/openPositions",
+                {},
+                None,
+            ),
+            (
+                lambda gateway: gateway.get_position("001", "USD_JPY"),
+                200,
+                "GET",
+                "/v3/accounts/001/positions/USD_JPY",
+                {},
+                None,
+            ),
+            (
+                lambda gateway: gateway.close_position("001", "USD_JPY", {"longUnits": "ALL"}),
+                200,
+                "PUT",
+                "/v3/accounts/001/positions/USD_JPY/close",
+                {},
+                {"longUnits": "ALL"},
+            ),
+            (
+                lambda gateway: gateway.get_account_prices(
+                    "001", instruments="USD_JPY", includeHomeConversions=True
+                ),
+                200,
+                "GET",
+                "/v3/accounts/001/pricing",
+                {"instruments": "USD_JPY", "includeHomeConversions": "true"},
+                None,
+            ),
+            (
+                lambda gateway: gateway.get_account_candles(
+                    "001", "USD_JPY", granularity="M1", count=1
+                ),
+                200,
+                "GET",
+                "/v3/accounts/001/instruments/USD_JPY/candles",
+                {"granularity": "M1", "count": "1"},
+                None,
+            ),
+            (
+                lambda gateway: gateway.get_instrument_candles(
+                    "USD_JPY", granularity="M1", count=1
+                ),
+                200,
+                "GET",
+                "/v3/instruments/USD_JPY/candles",
+                {"granularity": "M1", "count": "1"},
+                None,
+            ),
+            (
+                lambda gateway: gateway.get_instrument_prices(
+                    "USD_JPY", since="2026-01-01T00:00:00Z"
+                ),
+                200,
+                "GET",
+                "/v3/instruments/USD_JPY/prices",
+                {"since": "2026-01-01T00:00:00Z"},
+                None,
+            ),
+            (
+                lambda gateway: gateway.list_trades("001", {"count": 10, "state": "OPEN"}),
+                200,
+                "GET",
+                "/v3/accounts/001/trades",
+                {"count": "10", "state": "OPEN"},
+                None,
+            ),
+            (
+                lambda gateway: gateway.list_open_trades("001"),
+                200,
+                "GET",
+                "/v3/accounts/001/openTrades",
+                {},
+                None,
+            ),
+            (
+                lambda gateway: gateway.get_trade("001", "200"),
+                200,
+                "GET",
+                "/v3/accounts/001/trades/200",
+                {},
+                None,
+            ),
+            (
+                lambda gateway: gateway.close_trade("001", "200", {"units": "ALL"}),
+                200,
+                "PUT",
+                "/v3/accounts/001/trades/200/close",
+                {},
+                {"units": "ALL"},
+            ),
+            (
+                lambda gateway: gateway.set_trade_client_extensions(
+                    "001", "200", {"clientExtensions": {"id": "trade-200"}}
+                ),
+                200,
+                "PUT",
+                "/v3/accounts/001/trades/200/clientExtensions",
+                {},
+                {"clientExtensions": {"id": "trade-200"}},
+            ),
+            (
+                lambda gateway: gateway.set_trade_dependent_orders(
+                    "001", "200", {"takeProfit": {"price": "151.00"}}
+                ),
+                200,
+                "PUT",
+                "/v3/accounts/001/trades/200/orders",
+                {},
+                {"takeProfit": {"price": "151.00"}},
+            ),
+            (
+                lambda gateway: gateway.list_transactions("001", {"pageSize": 100}),
+                200,
+                "GET",
+                "/v3/accounts/001/transactions",
+                {"pageSize": "100"},
+                None,
+            ),
+            (
+                lambda gateway: gateway.get_transaction("001", "300"),
+                200,
+                "GET",
+                "/v3/accounts/001/transactions/300",
+                {},
+                None,
+            ),
+            (
+                lambda gateway: gateway.get_transaction_range("001", from_id="300", to_id="301"),
+                200,
+                "GET",
+                "/v3/accounts/001/transactions/idrange",
+                {"from": "300", "to": "301"},
+                None,
+            ),
+            (
+                lambda gateway: gateway.get_transactions_since("001", id="300"),
+                200,
+                "GET",
+                "/v3/accounts/001/transactions/sinceid",
+                {"id": "300"},
+                None,
+            ),
+        ],
     )
-    gateway = OandaGateway(
-        access_token="token",
-        hostname="api.example.test",
-        stream_hostname="stream.example.test",
-        opener=opener,
-        retry_policy=OandaRetryPolicy(attempts=2, initial_seconds=0, max_seconds=0),
-    )
+    def test_gateway_endpoint_methods_build_expected_requests(
+        self,
+        call: Callable[[OandaGateway], object],
+        status: int,
+        method: str,
+        path: str,
+        query: dict[str, str],
+        body: dict[str, Any] | None,
+    ) -> None:
+        opener = EndpointOpener([FakeHTTPResponse(status, {})])
+        gateway = OandaGateway(
+            access_token="token",
+            hostname="api.example.test",
+            stream_hostname="stream.example.test",
+            opener=opener,
+        )
 
-    response = gateway.list_accounts()
+        call(gateway)
 
-    assert response.status == 200
-    assert opener.calls == 2
+        request = opener.requests[0]
+        parsed = urlparse(request.full_url)
+        assert request.get_method() == method
+        assert parsed.scheme == "https"
+        assert parsed.netloc == "api.example.test"
+        assert parsed.path == path
+        assert {key: values[0] for key, values in parse_qs(parsed.query).items()} == query
+        if body is None:
+            assert request.data is None
+        else:
+            assert json.loads(request.data.decode()) == body
 
-
-def test_gateway_does_not_retry_non_retryable_api_errors_without_real_network() -> None:
-    opener = FakeOpener(
+    @pytest.mark.parametrize(
+        ("call", "path", "query", "stream_kind"),
         [
-            FakeHTTPResponse(
-                401,
-                {"errorCode": "UNAUTHORIZED", "errorMessage": "invalid token"},
-                reason="Unauthorized",
-            )
-        ]
+            (
+                lambda gateway: gateway.stream_account_prices(
+                    "001", instruments="USD_JPY", snapshot=True
+                ),
+                "/v3/accounts/001/pricing/stream",
+                {"instruments": "USD_JPY", "snapshot": "true"},
+                "pricing",
+            ),
+            (
+                lambda gateway: gateway.stream_transactions("001"),
+                "/v3/accounts/001/transactions/stream",
+                {},
+                "transactions",
+            ),
+        ],
     )
-    gateway = OandaGateway(
-        access_token="token",
-        hostname="api.example.test",
-        stream_hostname="stream.example.test",
-        opener=opener,
-        retry_policy=OandaRetryPolicy(attempts=3, initial_seconds=0, max_seconds=0),
-    )
+    def test_gateway_stream_endpoint_methods_build_expected_requests(
+        self,
+        call: Callable[[OandaGateway], OandaResponse[None]],
+        path: str,
+        query: dict[str, str],
+        stream_kind: str,
+    ) -> None:
+        opener = EndpointOpener([FakeStreamingHTTPResponse()])
+        gateway = OandaGateway(
+            access_token="token",
+            hostname="api.example.test",
+            stream_hostname="stream.example.test",
+            opener=opener,
+        )
 
-    with pytest.raises(OandaAuthenticationError):
-        gateway.list_accounts()
+        response = call(gateway)
 
-    assert opener.calls == 1
+        request = opener.requests[0]
+        parsed = urlparse(request.full_url)
+        assert request.get_method() == "GET"
+        assert parsed.scheme == "https"
+        assert parsed.netloc == "stream.example.test"
+        assert parsed.path == path
+        assert {key: values[0] for key, values in parse_qs(parsed.query).items()} == query
+        assert isinstance(response.raw, OandaStreamResponse)
+        assert response.raw.stream_kind == stream_kind
+
+    def test_gateway_datetime_to_str_formats_rfc3339(self) -> None:
+        gateway = OandaGateway(
+            access_token="token",
+            hostname="api.example.test",
+            stream_hostname="stream.example.test",
+            opener=FakeOpener([]),
+        )
+
+        assert gateway.datetime_to_str(datetime(2026, 1, 1, tzinfo=UTC)) == "2026-01-01T00:00:00Z"
+
+    def test_gateway_maps_http_error_without_real_network(self) -> None:
+        class ErrorOpener:
+            def __init__(self) -> None:
+                self.requests: list[Any] = []
+
+            def open(self, request: Any, timeout: int) -> Any:
+                from urllib.error import HTTPError
+
+                _ = timeout
+                self.requests.append(request)
+                response = FakeHTTPResponse(
+                    401,
+                    {"errorCode": "UNAUTHORIZED", "errorMessage": "bad token"},
+                    reason="Unauthorized",
+                )
+                raise HTTPError(
+                    url="https://api.example.test/v3/accounts",
+                    code=401,
+                    msg="Unauthorized",
+                    hdrs=cast(Any, response.headers),
+                    fp=cast(Any, response),
+                )
+
+        gateway = OandaGateway(
+            access_token="token",
+            hostname="api.example.test",
+            stream_hostname="stream.example.test",
+            opener=ErrorOpener(),
+        )
+
+        with pytest.raises(OandaAuthenticationError):
+            gateway.list_accounts()
+
+    def test_gateway_retries_retryable_api_errors_without_real_network(self) -> None:
+        opener = FakeOpener(
+            [
+                FakeHTTPResponse(
+                    500,
+                    {"errorCode": "INTERNAL_SERVER_ERROR", "errorMessage": "temporary failure"},
+                    reason="Server Error",
+                ),
+                FakeHTTPResponse(200, {"accounts": []}),
+            ]
+        )
+        gateway = OandaGateway(
+            access_token="token",
+            hostname="api.example.test",
+            stream_hostname="stream.example.test",
+            opener=opener,
+            retry_policy=OandaRetryPolicy(attempts=2, initial_seconds=0, max_seconds=0),
+        )
+
+        response = gateway.list_accounts()
+
+        assert response.status == 200
+        assert opener.calls == 2
+
+    def test_gateway_does_not_retry_non_retryable_api_errors_without_real_network(self) -> None:
+        opener = FakeOpener(
+            [
+                FakeHTTPResponse(
+                    401,
+                    {"errorCode": "UNAUTHORIZED", "errorMessage": "invalid token"},
+                    reason="Unauthorized",
+                )
+            ]
+        )
+        gateway = OandaGateway(
+            access_token="token",
+            hostname="api.example.test",
+            stream_hostname="stream.example.test",
+            opener=opener,
+            retry_policy=OandaRetryPolicy(attempts=3, initial_seconds=0, max_seconds=0),
+        )
+
+        with pytest.raises(OandaAuthenticationError):
+            gateway.list_accounts()
+
+        assert opener.calls == 1

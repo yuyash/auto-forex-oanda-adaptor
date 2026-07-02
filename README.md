@@ -25,11 +25,6 @@ from oanda import OandaBroker, OandaDataSource, OandaSettings
 settings = OandaSettings()
 broker = OandaBroker.from_settings(settings)
 source = OandaDataSource.from_settings(settings)
-
-broker = OandaBroker.from_credentials(
-    account_id="...",
-    access_token="...",
-)
 ```
 
 ## Setup
