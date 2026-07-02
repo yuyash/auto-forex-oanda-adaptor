@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core import CurrencyPair, Tick
+from core import CandleGranularity, CurrencyPair, Tick
 
 from oanda import OandaProvider
 
@@ -12,7 +12,12 @@ class TestSourceLive:
         e2e_instrument: CurrencyPair,
     ) -> None:
         prices = tuple(oanda_provider.data.prices(instruments=(e2e_instrument,)))
-        candles = tuple(oanda_provider.data.candles(instrument=e2e_instrument, granularity="M1"))
+        candles = tuple(
+            oanda_provider.data.candles(
+                instrument=e2e_instrument,
+                granularity=CandleGranularity.MINUTE_1,
+            )
+        )
 
         assert prices
         assert prices[0].instrument == e2e_instrument
@@ -24,7 +29,7 @@ class TestSourceLive:
         oanda_provider: OandaProvider,
         e2e_instrument: CurrencyPair,
     ) -> None:
-        stream = oanda_provider.data.stream_ticks(
+        stream = oanda_provider.data.stream_prices(
             instruments=(e2e_instrument,),
             snapshot=True,
         )

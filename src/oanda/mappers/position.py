@@ -19,8 +19,8 @@ from oanda.domain import OandaPosition
 class OandaPositionMapper:
     """Map OANDA position objects into Core two-sided positions."""
 
-    def __init__(self, *, account_currency: Currency | str) -> None:
-        self.account_currency = Currency.of(account_currency)
+    def __init__(self, *, account_currency: Currency) -> None:
+        self.account_currency = account_currency
 
     def positions_from_response(self, response: object) -> tuple[OandaPosition, ...]:
         """Convert an OANDA positions response into Core positions."""

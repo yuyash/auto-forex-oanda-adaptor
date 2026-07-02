@@ -18,8 +18,8 @@ from oanda.domain import OandaTransaction
 class OandaTransactionMapper:
     """Map OANDA transaction objects into Core transaction snapshots."""
 
-    def __init__(self, *, account_currency: Currency | str) -> None:
-        self.account_currency = Currency.of(account_currency)
+    def __init__(self, *, account_currency: Currency) -> None:
+        self.account_currency = account_currency
 
     def transaction_from_response(self, response: object) -> OandaTransaction:
         """Convert an OANDA transaction response into one Core transaction."""

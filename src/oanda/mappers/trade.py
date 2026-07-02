@@ -11,8 +11,8 @@ from oanda.domain import OandaTrade
 class OandaTradeMapper:
     """Map OANDA trade objects into Core trade snapshots."""
 
-    def __init__(self, *, account_currency: Currency | str) -> None:
-        self.account_currency = Currency.of(account_currency)
+    def __init__(self, *, account_currency: Currency) -> None:
+        self.account_currency = account_currency
 
     def trades_from_response(self, response: object) -> tuple[OandaTrade, ...]:
         """Convert an OANDA trades response into Core trades."""

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from core import CurrencyPair, Money
+from core import CandleGranularity, CurrencyPair, Money
 
 from oanda.gateway import OandaGateway
 from oanda.source import OandaDataSource
@@ -17,7 +17,12 @@ class TestSource:
         )
 
         prices = tuple(source.prices(instruments=(CurrencyPair.of("USD_JPY"),)))
-        candles = tuple(source.candles(instrument=CurrencyPair.of("USD_JPY"), granularity="M1"))
+        candles = tuple(
+            source.candles(
+                instrument=CurrencyPair.of("USD_JPY"),
+                granularity=CandleGranularity.MINUTE_1,
+            )
+        )
 
         assert prices[0].bid == Money.of("150.10", "JPY")
         assert candles[0].close == Money.of("150.10", "JPY")

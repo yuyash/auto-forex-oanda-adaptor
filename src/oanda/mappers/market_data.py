@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from core import Candle, CurrencyPair, Metadata, Money, Tick
+from core import Candle, CandleGranularity, CurrencyPair, Metadata, Money, Tick
 
 import oanda.payload as payload
 
@@ -42,7 +42,11 @@ class OandaMarketDataMapper:
         return tuple(self.tick_from_price(price) for price in prices)
 
     def candle_from_oanda(
-        self, item: object, *, instrument: CurrencyPair, granularity: str
+        self,
+        item: object,
+        *,
+        instrument: CurrencyPair,
+        granularity: CandleGranularity,
     ) -> Candle:
         """Convert an OANDA candlestick into a Core candle."""
         data = payload.get(item, "mid")
@@ -70,7 +74,7 @@ class OandaMarketDataMapper:
         response: object,
         *,
         instrument: CurrencyPair,
-        granularity: str,
+        granularity: CandleGranularity,
     ) -> tuple[Candle, ...]:
         """Convert a candles response into Core candles."""
         candles = payload.get(payload.body(response), "candles", ()) or ()

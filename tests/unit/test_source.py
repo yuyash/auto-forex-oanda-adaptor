@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from core import CurrencyPair, Money, Tick
+from core import CandleGranularity, CurrencyPair, Money, Tick
 
 from oanda.source import OandaDataSource
 from tests.support import FakeResponse
@@ -61,7 +61,9 @@ class TestSource:
         mapper.candles_from_response.return_value = ("mapped-candle",)
         source = OandaDataSource(account_id="001", gateway=gateway, mapper=mapper)
 
-        assert tuple(source.candles(instrument=USD_JPY, granularity="M1")) == ("mapped-candle",)
+        assert tuple(
+            source.candles(instrument=USD_JPY, granularity=CandleGranularity.MINUTE_1)
+        ) == ("mapped-candle",)
         gateway.get_account_candles.assert_called_once_with(
             "001",
             "USD_JPY",
@@ -81,7 +83,7 @@ class TestSource:
         mapper.tick_from_price.return_value = tick
         source = OandaDataSource(account_id="001", gateway=gateway, mapper=mapper)
 
-        assert tuple(source.stream_ticks(instruments=(USD_JPY,), snapshot=False)) == (tick,)
+        assert tuple(source.stream_prices(instruments=(USD_JPY,), snapshot=False)) == (tick,)
         gateway.stream_account_prices.assert_called_once_with(
             "001",
             instruments="USD_JPY",

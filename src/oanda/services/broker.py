@@ -28,32 +28,18 @@ AccountCurrencyProvider = Callable[[], Currency]
 MapperFactory = Callable[..., Any]
 
 
-def close_position_kwargs(*, side: PositionSide, units: Decimal) -> dict[str, str]:
-    """Build OANDA side-specific close-position units."""
-    amount = str(units)
-    if side == PositionSide.LONG:
-        return {"longUnits": amount, "shortUnits": "NONE"}
-    return {"longUnits": "NONE", "shortUnits": amount}
+class OandaMutationResponsePolicy:
+    """Classify OANDA mutation responses accepted by broker services."""
 
+    _EXPECTED_STATUSES = frozenset({200, 201, 400, 404})
 
-def raise_unexpected_order_response(response: object) -> None:
-    """Raise for unexpected mutation response statuses."""
-    status = int(getattr(response, "status", 0) or 0)
-    if status in {200, 201, 400, 404}:
-        return
-    raise error_from_response(response)
-
-
-def order_type(order_type_: OrderType) -> str:
-    """Map Core order type to OANDA order type text."""
-    if order_type_ == OrderType.MARKET:
-        return "MARKET"
-    if order_type_ == OrderType.LIMIT:
-        return "LIMIT"
-    if order_type_ == OrderType.STOP:
-        return "STOP"
-    msg = f"unsupported OANDA order type: {order_type_}"
-    raise ValueError(msg)
+    @classmethod
+    def raise_for_unexpected(cls, response: object) -> None:
+        """Raise for mutation response statuses outside the broker contract."""
+        status = int(getattr(response, "status", 0) or 0)
+        if status in cls._EXPECTED_STATUSES:
+            return
+        raise error_from_response(response)
 
 
 class OandaOrderService:
@@ -83,7 +69,7 @@ class OandaOrderService:
             msg = f"unsupported OANDA order type: {order.order_type}"
             raise ValueError(msg)
 
-        raise_unexpected_order_response(response)
+        OandaMutationResponsePolicy.raise_for_unexpected(response)
         return self.order_mapper.order_from_order_response(response, order)
 
     def close_position(
@@ -96,14 +82,14 @@ class OandaOrderService:
         """Close all or part of an OANDA position."""
         state = position.require_side(side)
         requested_units = (units or state.units).copy_abs()
-        kwargs = close_position_kwargs(side=side, units=requested_units)
+        kwargs = self.close_position_kwargs(side=side, units=requested_units)
         response = self.gateway.close_position(
             self.account_id,
             OandaInstrumentMapper.to_oanda(position.instrument),
             longUnits=kwargs["longUnits"],
             shortUnits=kwargs["shortUnits"],
         )
-        raise_unexpected_order_response(response)
+        OandaMutationResponsePolicy.raise_for_unexpected(response)
         return self.order_mapper.order_from_position_close_response(
             response,
             position=position,
@@ -139,18 +125,18 @@ class OandaOrderService:
             {
                 "order": {
                     **self.order_mapper.order_kwargs(order),
-                    "type": order_type(order.order_type),
+                    "type": self.order_type(order.order_type),
                 }
             },
             retry=True,
         )
-        raise_unexpected_order_response(response)
+        OandaMutationResponsePolicy.raise_for_unexpected(response)
         return self.order_mapper.order_from_order_response(response, order)
 
     def cancel_order(self, order_id: str) -> Metadata:
         """Cancel one OANDA order."""
         response = self.gateway.cancel_order(self.account_id, order_id, retry=True)
-        raise_unexpected_order_response(response)
+        OandaMutationResponsePolicy.raise_for_unexpected(response)
         return payload.metadata(response.body)
 
     def set_order_client_extensions(
@@ -169,8 +155,28 @@ class OandaOrderService:
             request,
             retry=True,
         )
-        raise_unexpected_order_response(response)
+        OandaMutationResponsePolicy.raise_for_unexpected(response)
         return payload.metadata(response.body)
+
+    @staticmethod
+    def close_position_kwargs(*, side: PositionSide, units: Decimal) -> dict[str, str]:
+        """Build OANDA side-specific close-position units."""
+        amount = str(units)
+        if side == PositionSide.LONG:
+            return {"longUnits": amount, "shortUnits": "NONE"}
+        return {"longUnits": "NONE", "shortUnits": amount}
+
+    @staticmethod
+    def order_type(order_type_: OrderType) -> str:
+        """Map Core order type to OANDA order type text."""
+        if order_type_ == OrderType.MARKET:
+            return "MARKET"
+        if order_type_ == OrderType.LIMIT:
+            return "LIMIT"
+        if order_type_ == OrderType.STOP:
+            return "STOP"
+        msg = f"unsupported OANDA order type: {order_type_}"
+        raise ValueError(msg)
 
 
 class OandaPositionService:
@@ -260,7 +266,7 @@ class OandaTradeService:
         """Close all or part of an OANDA trade."""
         request = {"units": str(units)} if units is not None else None
         response = self.gateway.close_trade(self.account_id, trade_id, request, retry=True)
-        raise_unexpected_order_response(response)
+        OandaMutationResponsePolicy.raise_for_unexpected(response)
         return payload.metadata(response.body)
 
     def set_trade_client_extensions(
@@ -279,7 +285,7 @@ class OandaTradeService:
             request,
             retry=True,
         )
-        raise_unexpected_order_response(response)
+        OandaMutationResponsePolicy.raise_for_unexpected(response)
         return payload.metadata(response.body)
 
     def set_trade_dependent_orders(self, trade_id: str, **orders: object) -> Metadata:
@@ -290,7 +296,7 @@ class OandaTradeService:
             payload.clean(orders),
             retry=True,
         )
-        raise_unexpected_order_response(response)
+        OandaMutationResponsePolicy.raise_for_unexpected(response)
         return payload.metadata(response.body)
 
     def _mapper(self) -> Any:

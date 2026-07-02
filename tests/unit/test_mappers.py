@@ -3,7 +3,17 @@ from __future__ import annotations
 from decimal import Decimal
 from types import SimpleNamespace
 
-from core import CurrencyPair, Money, Order, OrderSide, OrderStatus, OrderType, PositionSide
+from core import (
+    CandleGranularity,
+    Currency,
+    CurrencyPair,
+    Money,
+    Order,
+    OrderSide,
+    OrderStatus,
+    OrderType,
+    PositionSide,
+)
 
 from oanda.mappers import (
     OandaAccountMapper,
@@ -136,19 +146,22 @@ class TestMappers:
         price_response = FakeResponse(200, {"prices": [price_namespace()]})
         candle_response = FakeResponse(200, {"candles": [candle_namespace()]})
 
-        positions = OandaPositionMapper(account_currency="USD").positions_from_response(
+        account_currency = Currency.of("USD")
+        positions = OandaPositionMapper(account_currency=account_currency).positions_from_response(
             position_response
         )
-        trades = OandaTradeMapper(account_currency="USD").trades_from_response(trade_response)
-        transactions = OandaTransactionMapper(account_currency="USD").transactions_from_response(
-            transaction_response
+        trades = OandaTradeMapper(account_currency=account_currency).trades_from_response(
+            trade_response
         )
+        transactions = OandaTransactionMapper(
+            account_currency=account_currency
+        ).transactions_from_response(transaction_response)
         market_data = OandaMarketDataMapper()
         ticks = market_data.ticks_from_prices(price_response.body["prices"])
         candles = market_data.candles_from_response(
             candle_response,
             instrument=USD_JPY,
-            granularity="M1",
+            granularity=CandleGranularity.MINUTE_1,
         )
 
         assert positions[0].long is not None
@@ -182,7 +195,9 @@ class TestMappers:
             },
         )
 
-        positions = OandaPositionMapper(account_currency="USD").positions_from_response(response)
+        positions = OandaPositionMapper(
+            account_currency=Currency.of("USD")
+        ).positions_from_response(response)
 
         assert positions[0].long is not None
         assert positions[0].short is not None

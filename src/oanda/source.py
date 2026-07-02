@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping
 from datetime import datetime
 from typing import Any, cast
 
-from core import Candle, CurrencyPair, DataSource, Tick
+from core import Candle, CandleGranularity, CurrencyPair, DataSource, Tick
 
 from oanda.config import OandaSettings
 from oanda.errors import ensure_success
@@ -89,7 +89,7 @@ class OandaDataSource(DataSource):
         self,
         *,
         instrument: CurrencyPair,
-        granularity: str,
+        granularity: CandleGranularity,
         start_at: datetime | None = None,
         end_at: datetime | None = None,
     ) -> Iterable[Candle]:
@@ -100,7 +100,7 @@ class OandaDataSource(DataSource):
                 OandaInstrumentMapper.to_oanda(instrument),
                 {
                     "price": "M",
-                    "granularity": granularity,
+                    "granularity": granularity.value,
                     "from": self._format_time(start_at),
                     "to": self._format_time(end_at),
                 },
@@ -130,15 +130,6 @@ class OandaDataSource(DataSource):
             if part_type.endswith("PricingHeartbeat"):
                 continue
             yield self.mapper.tick_from_price(value)
-
-    def stream_ticks(
-        self,
-        *,
-        instruments: Iterable[CurrencyPair],
-        snapshot: bool = True,
-    ) -> Iterable[Tick]:
-        """Yield live OANDA pricing stream updates as Core ticks."""
-        return self.stream_prices(instruments=instruments, snapshot=snapshot)
 
     def close(self) -> None:
         """Close the underlying HTTP session when available."""

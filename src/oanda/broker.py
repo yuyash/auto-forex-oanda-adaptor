@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
 
 from core import (
     Broker,
@@ -13,14 +12,12 @@ from core import (
     CurrencyPair,
     Metadata,
     Order,
-    OrderType,
     Position,
     PositionSide,
     Trade,
     Transaction,
 )
 
-import oanda.payload as payload
 from oanda.config import OandaSettings
 from oanda.errors import ensure_success
 from oanda.gateway import OandaGateway
@@ -36,9 +33,6 @@ from oanda.services.broker import (
     OandaPositionService,
     OandaTradeService,
     OandaTransactionService,
-    close_position_kwargs,
-    order_type,
-    raise_unexpected_order_response,
 )
 
 
@@ -247,41 +241,7 @@ class OandaBroker(Broker):
         """Yield OANDA transaction stream updates."""
         return self._transactions.stream_transactions()
 
-    @staticmethod
-    def _close_position_kwargs(*, side: PositionSide, units: Decimal) -> dict[str, str]:
-        return close_position_kwargs(side=side, units=units)
-
-    @staticmethod
-    def _raise_unexpected_order_response(response: object) -> None:
-        raise_unexpected_order_response(response)
-
     def _format_time(self, value: datetime | None) -> str | None:
         if value is None:
             return None
         return self.gateway.datetime_to_str(value)
-
-    @staticmethod
-    def _metadata(value: Any) -> Metadata:
-        return payload.metadata(value)
-
-    @staticmethod
-    def _get(value: Any, key: str, default: Any = None) -> Any:
-        return payload.get(value, key, default)
-
-    @staticmethod
-    def _clean(values: Mapping[str, object]) -> dict[str, object]:
-        return payload.clean(values)
-
-    @classmethod
-    def _client_extensions(
-        cls,
-        *,
-        client_id: str | None,
-        tag: str | None,
-        comment: str | None,
-    ) -> dict[str, dict[str, str]]:
-        return payload.client_extensions(client_id=client_id, tag=tag, comment=comment)
-
-    @staticmethod
-    def _order_type(order_type_: OrderType) -> str:
-        return order_type(order_type_)
