@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 from pydantic import SecretStr
 
+import oanda.models as om
 from oanda.config import OandaEnvironment, OandaSettings
 from oanda.errors import OandaAuthenticationError
 from oanda.gateway import OandaGateway, OandaRetryPolicy
@@ -88,7 +90,13 @@ class TestGateway:
 
         gateway.create_order(
             "001",
-            {"order": {"type": "MARKET", "instrument": "USD_JPY", "units": "1000"}},
+            om.CreateOrderRequest(
+                order=om.MarketOrderRequest(
+                    type=om.OrderType.MARKET,
+                    instrument="USD_JPY",
+                    units=Decimal("1000"),
+                )
+            ),
         )
 
         request = opener.requests[0]
@@ -128,7 +136,7 @@ class TestGateway:
             ),
             (
                 lambda gateway: gateway.get_account_instruments(
-                    "001", {"instruments": ("USD_JPY", "EUR_USD")}
+                    "001", om.AccountInstrumentsRequest(instruments=("USD_JPY", "EUR_USD"))
                 ),
                 200,
                 "GET",
@@ -137,7 +145,9 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.configure_account("001", {"alias": "primary"}),
+                lambda gateway: gateway.configure_account(
+                    "001", om.ConfigureAccountRequest(alias="primary")
+                ),
                 200,
                 "PATCH",
                 "/v3/accounts/001/configuration",
@@ -145,7 +155,10 @@ class TestGateway:
                 {"alias": "primary"},
             ),
             (
-                lambda gateway: gateway.get_account_changes("001", {"sinceTransactionID": "10"}),
+                lambda gateway: gateway.get_account_changes(
+                    "001",
+                    om.AccountChangesRequest.model_validate({"sinceTransactionID": "10"}),
+                ),
                 200,
                 "GET",
                 "/v3/accounts/001/changes",
@@ -153,7 +166,10 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.create_order("001", {"order": {"type": "MARKET"}}),
+                lambda gateway: gateway.create_order(
+                    "001",
+                    om.CreateOrderRequest(order=om.MarketOrderRequest(type=om.OrderType.MARKET)),
+                ),
                 201,
                 "POST",
                 "/v3/accounts/001/orders",
@@ -161,7 +177,9 @@ class TestGateway:
                 {"order": {"type": "MARKET"}},
             ),
             (
-                lambda gateway: gateway.list_orders("001", {"count": 10, "state": "PENDING"}),
+                lambda gateway: gateway.list_orders(
+                    "001", om.OrdersRequest(count=10, state=om.OrderStateFilter.PENDING)
+                ),
                 200,
                 "GET",
                 "/v3/accounts/001/orders",
@@ -185,7 +203,11 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.replace_order("001", "100", {"order": {"type": "LIMIT"}}),
+                lambda gateway: gateway.replace_order(
+                    "001",
+                    "100",
+                    om.ReplaceOrderRequest(order=om.LimitOrderRequest(type=om.OrderType.LIMIT)),
+                ),
                 201,
                 "PUT",
                 "/v3/accounts/001/orders/100",
@@ -202,7 +224,11 @@ class TestGateway:
             ),
             (
                 lambda gateway: gateway.set_order_client_extensions(
-                    "001", "100", {"clientExtensions": {"id": "client-100"}}
+                    "001",
+                    "100",
+                    om.SetOrderClientExtensionsRequest.model_validate(
+                        {"clientExtensions": om.ClientExtensions(id="client-100")}
+                    ),
                 ),
                 200,
                 "PUT",
@@ -405,7 +431,11 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.close_position("001", "USD_JPY", {"longUnits": "ALL"}),
+                lambda gateway: gateway.close_position(
+                    "001",
+                    "USD_JPY",
+                    om.ClosePositionRequest.model_validate({"longUnits": "ALL"}),
+                ),
                 200,
                 "PUT",
                 "/v3/accounts/001/positions/USD_JPY/close",
@@ -453,7 +483,9 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.list_trades("001", {"count": 10, "state": "OPEN"}),
+                lambda gateway: gateway.list_trades(
+                    "001", om.TradesRequest(count=10, state=om.TradeStateFilter.OPEN)
+                ),
                 200,
                 "GET",
                 "/v3/accounts/001/trades",
@@ -477,7 +509,9 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.close_trade("001", "200", {"units": "ALL"}),
+                lambda gateway: gateway.close_trade(
+                    "001", "200", om.CloseTradeRequest(units="ALL")
+                ),
                 200,
                 "PUT",
                 "/v3/accounts/001/trades/200/close",
@@ -486,7 +520,11 @@ class TestGateway:
             ),
             (
                 lambda gateway: gateway.set_trade_client_extensions(
-                    "001", "200", {"clientExtensions": {"id": "trade-200"}}
+                    "001",
+                    "200",
+                    om.SetTradeClientExtensionsRequest.model_validate(
+                        {"clientExtensions": om.ClientExtensions(id="trade-200")}
+                    ),
                 ),
                 200,
                 "PUT",
@@ -496,7 +534,11 @@ class TestGateway:
             ),
             (
                 lambda gateway: gateway.set_trade_dependent_orders(
-                    "001", "200", {"takeProfit": {"price": "151.00"}}
+                    "001",
+                    "200",
+                    om.SetTradeDependentOrdersRequest.model_validate(
+                        {"takeProfit": om.TakeProfitDetails(price=Decimal("151.00"))}
+                    ),
                 ),
                 200,
                 "PUT",
@@ -505,7 +547,9 @@ class TestGateway:
                 {"takeProfit": {"price": "151.00"}},
             ),
             (
-                lambda gateway: gateway.list_transactions("001", {"pageSize": 100}),
+                lambda gateway: gateway.list_transactions(
+                    "001", om.TransactionsRequest.model_validate({"pageSize": 100})
+                ),
                 200,
                 "GET",
                 "/v3/accounts/001/transactions",

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 
 import oanda.models as om
@@ -10,6 +9,13 @@ from oanda.transport import OandaTransport
 
 _CREATED = (201,)
 _ORDER_REJECTED = (400, 404)
+
+
+def _tuple_field(values: dict[str, Any], key: str) -> dict[str, Any]:
+    value = values.get(key)
+    if isinstance(value, str):
+        return {**values, key: (value,)}
+    return values
 
 
 class OandaAccountsApi:
@@ -35,7 +41,7 @@ class OandaAccountsApi:
     def get_account_instruments(
         self,
         account_id: str,
-        request: om.AccountInstrumentsRequest | Mapping[str, Any] | None = None,
+        request: om.AccountInstrumentsRequest | None = None,
     ) -> om.OandaResponse[om.AccountInstrumentsResponse]:
         """Get account tradable instruments."""
         return self._transport._request(
@@ -48,13 +54,13 @@ class OandaAccountsApi:
     def configure_account(
         self,
         account_id: str,
-        request: om.ConfigureAccountRequest | Mapping[str, Any] | None = None,
+        request: om.ConfigureAccountRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
     ) -> om.OandaResponse[om.ConfigureAccountResponse]:
         """Configure account alias or margin settings."""
-        body = request if request is not None else kwargs
+        body = request if request is not None else om.ConfigureAccountRequest.model_validate(kwargs)
         return self._transport._request(
             "PATCH",
             f"/v3/accounts/{account_id}/configuration",
@@ -67,7 +73,7 @@ class OandaAccountsApi:
     def get_account_changes(
         self,
         account_id: str,
-        request: om.AccountChangesRequest | Mapping[str, Any] | None = None,
+        request: om.AccountChangesRequest | None = None,
     ) -> om.OandaResponse[om.AccountChangesResponse]:
         """Get account changes since a transaction ID."""
         return self._transport._request(
@@ -87,13 +93,13 @@ class OandaOrdersApi:
     def create_order(
         self,
         account_id: str,
-        request: om.CreateOrderRequest | Mapping[str, Any] | None = None,
+        request: om.CreateOrderRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create an order."""
-        body = request if request is not None else kwargs
+        body = request if request is not None else om.CreateOrderRequest.model_validate(kwargs)
         return self._transport._request(
             "POST",
             f"/v3/accounts/{account_id}/orders",
@@ -107,7 +113,7 @@ class OandaOrdersApi:
     def list_orders(
         self,
         account_id: str,
-        request: om.OrdersRequest | Mapping[str, Any] | None = None,
+        request: om.OrdersRequest | None = None,
     ) -> om.OandaResponse[om.OrdersResponse]:
         """List orders."""
         return self._transport._request(
@@ -134,13 +140,13 @@ class OandaOrdersApi:
         self,
         account_id: str,
         order_specifier: str,
-        request: om.ReplaceOrderRequest | Mapping[str, Any] | None = None,
+        request: om.ReplaceOrderRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Replace one order."""
-        body = request if request is not None else kwargs
+        body = request if request is not None else om.ReplaceOrderRequest.model_validate(kwargs)
         return self._transport._request(
             "PUT",
             f"/v3/accounts/{account_id}/orders/{order_specifier}",
@@ -171,13 +177,17 @@ class OandaOrdersApi:
         self,
         account_id: str,
         order_specifier: str,
-        request: om.SetOrderClientExtensionsRequest | Mapping[str, Any] | None = None,
+        request: om.SetOrderClientExtensionsRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Set order client extensions."""
-        body = request if request is not None else kwargs
+        body = (
+            request
+            if request is not None
+            else om.SetOrderClientExtensionsRequest.model_validate(kwargs)
+        )
         return self._transport._request(
             "PUT",
             f"/v3/accounts/{account_id}/orders/{order_specifier}/clientExtensions",
@@ -195,7 +205,13 @@ class OandaOrdersApi:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create a market order."""
-        return self.create_order(account_id, {"order": {**kwargs, "type": "MARKET"}}, retry=retry)
+        return self.create_order(
+            account_id,
+            om.CreateOrderRequest(
+                order=om.MarketOrderRequest.model_validate({**kwargs, "type": "MARKET"})
+            ),
+            retry=retry,
+        )
 
     def create_limit_order(
         self,
@@ -205,7 +221,13 @@ class OandaOrdersApi:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create a limit order."""
-        return self.create_order(account_id, {"order": {**kwargs, "type": "LIMIT"}}, retry=retry)
+        return self.create_order(
+            account_id,
+            om.CreateOrderRequest(
+                order=om.LimitOrderRequest.model_validate({**kwargs, "type": "LIMIT"})
+            ),
+            retry=retry,
+        )
 
     def replace_limit_order(
         self,
@@ -217,7 +239,12 @@ class OandaOrdersApi:
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Replace a limit order."""
         return self.replace_order(
-            account_id, order_id, {"order": {**kwargs, "type": "LIMIT"}}, retry=retry
+            account_id,
+            order_id,
+            om.ReplaceOrderRequest(
+                order=om.LimitOrderRequest.model_validate({**kwargs, "type": "LIMIT"})
+            ),
+            retry=retry,
         )
 
     def create_stop_order(
@@ -228,7 +255,13 @@ class OandaOrdersApi:
         **kwargs: Any,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create a stop order."""
-        return self.create_order(account_id, {"order": {**kwargs, "type": "STOP"}}, retry=retry)
+        return self.create_order(
+            account_id,
+            om.CreateOrderRequest(
+                order=om.StopOrderRequest.model_validate({**kwargs, "type": "STOP"})
+            ),
+            retry=retry,
+        )
 
     def replace_stop_order(
         self,
@@ -240,7 +273,12 @@ class OandaOrdersApi:
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Replace a stop order."""
         return self.replace_order(
-            account_id, order_id, {"order": {**kwargs, "type": "STOP"}}, retry=retry
+            account_id,
+            order_id,
+            om.ReplaceOrderRequest(
+                order=om.StopOrderRequest.model_validate({**kwargs, "type": "STOP"})
+            ),
+            retry=retry,
         )
 
     def create_market_if_touched_order(
@@ -253,7 +291,11 @@ class OandaOrdersApi:
         """Create a market-if-touched order."""
         return self.create_order(
             account_id,
-            {"order": {**kwargs, "type": "MARKET_IF_TOUCHED"}},
+            om.CreateOrderRequest(
+                order=om.MarketIfTouchedOrderRequest.model_validate(
+                    {**kwargs, "type": "MARKET_IF_TOUCHED"}
+                )
+            ),
             retry=retry,
         )
 
@@ -269,7 +311,11 @@ class OandaOrdersApi:
         return self.replace_order(
             account_id,
             order_id,
-            {"order": {**kwargs, "type": "MARKET_IF_TOUCHED"}},
+            om.ReplaceOrderRequest(
+                order=om.MarketIfTouchedOrderRequest.model_validate(
+                    {**kwargs, "type": "MARKET_IF_TOUCHED"}
+                )
+            ),
             retry=retry,
         )
 
@@ -282,7 +328,11 @@ class OandaOrdersApi:
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create a take-profit order."""
         return self.create_order(
-            account_id, {"order": {**kwargs, "type": "TAKE_PROFIT"}}, retry=retry
+            account_id,
+            om.CreateOrderRequest(
+                order=om.TakeProfitOrderRequest.model_validate({**kwargs, "type": "TAKE_PROFIT"})
+            ),
+            retry=retry,
         )
 
     def replace_take_profit_order(
@@ -297,7 +347,9 @@ class OandaOrdersApi:
         return self.replace_order(
             account_id,
             order_id,
-            {"order": {**kwargs, "type": "TAKE_PROFIT"}},
+            om.ReplaceOrderRequest(
+                order=om.TakeProfitOrderRequest.model_validate({**kwargs, "type": "TAKE_PROFIT"})
+            ),
             retry=retry,
         )
 
@@ -310,7 +362,11 @@ class OandaOrdersApi:
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create a stop-loss order."""
         return self.create_order(
-            account_id, {"order": {**kwargs, "type": "STOP_LOSS"}}, retry=retry
+            account_id,
+            om.CreateOrderRequest(
+                order=om.StopLossOrderRequest.model_validate({**kwargs, "type": "STOP_LOSS"})
+            ),
+            retry=retry,
         )
 
     def replace_stop_loss_order(
@@ -325,7 +381,9 @@ class OandaOrdersApi:
         return self.replace_order(
             account_id,
             order_id,
-            {"order": {**kwargs, "type": "STOP_LOSS"}},
+            om.ReplaceOrderRequest(
+                order=om.StopLossOrderRequest.model_validate({**kwargs, "type": "STOP_LOSS"})
+            ),
             retry=retry,
         )
 
@@ -339,7 +397,11 @@ class OandaOrdersApi:
         """Create a trailing stop-loss order."""
         return self.create_order(
             account_id,
-            {"order": {**kwargs, "type": "TRAILING_STOP_LOSS"}},
+            om.CreateOrderRequest(
+                order=om.TrailingStopLossOrderRequest.model_validate(
+                    {**kwargs, "type": "TRAILING_STOP_LOSS"}
+                )
+            ),
             retry=retry,
         )
 
@@ -355,7 +417,11 @@ class OandaOrdersApi:
         return self.replace_order(
             account_id,
             order_id,
-            {"order": {**kwargs, "type": "TRAILING_STOP_LOSS"}},
+            om.ReplaceOrderRequest(
+                order=om.TrailingStopLossOrderRequest.model_validate(
+                    {**kwargs, "type": "TRAILING_STOP_LOSS"}
+                )
+            ),
             retry=retry,
         )
 
@@ -392,13 +458,13 @@ class OandaPositionsApi:
         self,
         account_id: str,
         instrument: str,
-        request: om.ClosePositionRequest | Mapping[str, Any] | None = None,
+        request: om.ClosePositionRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
     ) -> om.OandaResponse[om.PositionCloseResponse]:
         """Close one position."""
-        body = request if request is not None else kwargs
+        body = request if request is not None else om.ClosePositionRequest.model_validate(kwargs)
         return self._transport._request(
             "PUT",
             f"/v3/accounts/{account_id}/positions/{instrument}/close",
@@ -418,11 +484,15 @@ class OandaPricingApi:
     def get_account_prices(
         self,
         account_id: str,
-        request: om.PricingRequest | Mapping[str, Any] | None = None,
+        request: om.PricingRequest | None = None,
         **kwargs: Any,
     ) -> om.OandaResponse[om.PricingResponse]:
         """Get account prices."""
-        query = request if request is not None else kwargs
+        query = (
+            request
+            if request is not None
+            else om.PricingRequest.model_validate(_tuple_field(kwargs, "instruments"))
+        )
         return self._transport._request(
             "GET", f"/v3/accounts/{account_id}/pricing", om.PricingResponse, query=query
         )
@@ -430,11 +500,15 @@ class OandaPricingApi:
     def stream_account_prices(
         self,
         account_id: str,
-        request: om.PricingStreamRequest | Mapping[str, Any] | None = None,
+        request: om.PricingStreamRequest | None = None,
         **kwargs: Any,
     ) -> om.OandaResponse[None]:
         """Stream account prices."""
-        query = request if request is not None else kwargs
+        query = (
+            request
+            if request is not None
+            else om.PricingStreamRequest.model_validate(_tuple_field(kwargs, "instruments"))
+        )
         return self._transport._stream(
             "GET",
             f"/v3/accounts/{account_id}/pricing/stream",
@@ -446,11 +520,11 @@ class OandaPricingApi:
         self,
         account_id: str,
         instrument: str,
-        request: om.AccountCandlesRequest | Mapping[str, Any] | None = None,
+        request: om.AccountCandlesRequest | None = None,
         **kwargs: Any,
     ) -> om.OandaResponse[om.CandlestickResponse]:
         """Fetch account-specific candles."""
-        query = request if request is not None else kwargs
+        query = request if request is not None else om.AccountCandlesRequest.model_validate(kwargs)
         return self._transport._request(
             "GET",
             f"/v3/accounts/{account_id}/instruments/{instrument}/candles",
@@ -492,7 +566,7 @@ class OandaTradesApi:
     def list_trades(
         self,
         account_id: str,
-        request: om.TradesRequest | Mapping[str, Any] | None = None,
+        request: om.TradesRequest | None = None,
     ) -> om.OandaResponse[om.TradesResponse]:
         """List trades."""
         return self._transport._request(
@@ -519,13 +593,13 @@ class OandaTradesApi:
         self,
         account_id: str,
         trade_specifier: str,
-        request: om.CloseTradeRequest | Mapping[str, Any] | None = None,
+        request: om.CloseTradeRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
     ) -> om.OandaResponse[om.TradeTransactionResponse]:
         """Close one trade."""
-        body = request if request is not None else kwargs
+        body = request if request is not None else om.CloseTradeRequest.model_validate(kwargs)
         return self._transport._request(
             "PUT",
             f"/v3/accounts/{account_id}/trades/{trade_specifier}/close",
@@ -539,13 +613,17 @@ class OandaTradesApi:
         self,
         account_id: str,
         trade_specifier: str,
-        request: om.SetTradeClientExtensionsRequest | Mapping[str, Any] | None = None,
+        request: om.SetTradeClientExtensionsRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
     ) -> om.OandaResponse[om.TradeTransactionResponse]:
         """Set trade client extensions."""
-        body = request if request is not None else kwargs
+        body = (
+            request
+            if request is not None
+            else om.SetTradeClientExtensionsRequest.model_validate(kwargs)
+        )
         return self._transport._request(
             "PUT",
             f"/v3/accounts/{account_id}/trades/{trade_specifier}/clientExtensions",
@@ -559,13 +637,17 @@ class OandaTradesApi:
         self,
         account_id: str,
         trade_specifier: str,
-        request: om.SetTradeDependentOrdersRequest | Mapping[str, Any] | None = None,
+        request: om.SetTradeDependentOrdersRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
     ) -> om.OandaResponse[om.TradeTransactionResponse]:
         """Set trade dependent orders."""
-        body = request if request is not None else kwargs
+        body = (
+            request
+            if request is not None
+            else om.SetTradeDependentOrdersRequest.model_validate(kwargs)
+        )
         return self._transport._request(
             "PUT",
             f"/v3/accounts/{account_id}/trades/{trade_specifier}/orders",
@@ -585,7 +667,7 @@ class OandaTransactionsApi:
     def list_transactions(
         self,
         account_id: str,
-        request: om.TransactionsRequest | Mapping[str, Any] | None = None,
+        request: om.TransactionsRequest | None = None,
     ) -> om.OandaResponse[om.TransactionPagesResponse]:
         """List transaction pages."""
         return self._transport._request(
@@ -610,7 +692,7 @@ class OandaTransactionsApi:
     def get_transaction_range(
         self,
         account_id: str,
-        request: om.TransactionRangeRequest | Mapping[str, Any] | None = None,
+        request: om.TransactionRangeRequest | None = None,
         **kwargs: Any,
     ) -> om.OandaResponse[om.TransactionsResponse]:
         """Get a transaction ID range."""
@@ -627,11 +709,13 @@ class OandaTransactionsApi:
     def get_transactions_since(
         self,
         account_id: str,
-        request: om.TransactionsSinceRequest | Mapping[str, Any] | None = None,
+        request: om.TransactionsSinceRequest | None = None,
         **kwargs: Any,
     ) -> om.OandaResponse[om.TransactionsResponse]:
         """Get transactions since an ID."""
-        query = request if request is not None else kwargs
+        query = (
+            request if request is not None else om.TransactionsSinceRequest.model_validate(kwargs)
+        )
         return self._transport._request(
             "GET",
             f"/v3/accounts/{account_id}/transactions/sinceid",

@@ -19,6 +19,7 @@ from core import (
     Transaction,
 )
 
+import oanda.models as om
 import oanda.payload as payload
 from oanda.errors import ensure_success, error_from_response
 from oanda.gateway import OandaGateway
@@ -100,7 +101,10 @@ class OandaOrderService:
     def list_orders(self, **filters: object) -> Sequence[Metadata]:
         """Return OANDA orders as raw metadata snapshots."""
         response = ensure_success(
-            self.gateway.list_orders(self.account_id, payload.clean(filters)),
+            self.gateway.list_orders(
+                self.account_id,
+                om.OrdersRequest.model_validate(payload.clean(filters)),
+            ),
             200,
         )
         orders = payload.get(response.body, "orders", ()) or ()
@@ -122,12 +126,7 @@ class OandaOrderService:
         response = self.gateway.replace_order(
             self.account_id,
             order_id,
-            {
-                "order": {
-                    **self.order_mapper.order_kwargs(order),
-                    "type": self.order_type(order.order_type),
-                }
-            },
+            om.ReplaceOrderRequest(order=self._order_request(order)),
             retry=True,
         )
         OandaMutationResponsePolicy.raise_for_unexpected(response)
@@ -152,7 +151,9 @@ class OandaOrderService:
         response = self.gateway.set_order_client_extensions(
             self.account_id,
             order_id,
-            request,
+            om.SetOrderClientExtensionsRequest.model_validate(
+                {"clientExtensions": request["clientExtensions"]}
+            ),
             retry=True,
         )
         OandaMutationResponsePolicy.raise_for_unexpected(response)
@@ -176,6 +177,20 @@ class OandaOrderService:
         if order_type_ == OrderType.STOP:
             return "STOP"
         msg = f"unsupported OANDA order type: {order_type_}"
+        raise ValueError(msg)
+
+    def _order_request(self, order: Order) -> om.OrderRequestPayload:
+        values = {
+            **self.order_mapper.order_kwargs(order),
+            "type": self.order_type(order.order_type),
+        }
+        if order.order_type == OrderType.MARKET:
+            return om.MarketOrderRequest.model_validate(values)
+        if order.order_type == OrderType.LIMIT:
+            return om.LimitOrderRequest.model_validate(values)
+        if order.order_type == OrderType.STOP:
+            return om.StopOrderRequest.model_validate(values)
+        msg = f"unsupported OANDA order type: {order.order_type}"
         raise ValueError(msg)
 
 
@@ -247,7 +262,10 @@ class OandaTradeService:
     def list_trades(self, **filters: object) -> Sequence[Trade]:
         """Return OANDA trades."""
         response = ensure_success(
-            self.gateway.list_trades(self.account_id, payload.clean(filters)),
+            self.gateway.list_trades(
+                self.account_id,
+                om.TradesRequest.model_validate(payload.clean(filters)),
+            ),
             200,
         )
         return self._mapper().trades_from_response(response)
@@ -264,7 +282,11 @@ class OandaTradeService:
 
     def close_trade(self, trade_id: str, *, units: Decimal | None = None) -> Metadata:
         """Close all or part of an OANDA trade."""
-        request = {"units": str(units)} if units is not None else None
+        request = (
+            om.CloseTradeRequest.model_validate({"units": str(units)})
+            if units is not None
+            else None
+        )
         response = self.gateway.close_trade(self.account_id, trade_id, request, retry=True)
         OandaMutationResponsePolicy.raise_for_unexpected(response)
         return payload.metadata(response.body)
@@ -282,7 +304,9 @@ class OandaTradeService:
         response = self.gateway.set_trade_client_extensions(
             self.account_id,
             trade_id,
-            request,
+            om.SetTradeClientExtensionsRequest.model_validate(
+                {"clientExtensions": request["clientExtensions"]}
+            ),
             retry=True,
         )
         OandaMutationResponsePolicy.raise_for_unexpected(response)
@@ -293,7 +317,7 @@ class OandaTradeService:
         response = self.gateway.set_trade_dependent_orders(
             self.account_id,
             trade_id,
-            payload.clean(orders),
+            om.SetTradeDependentOrdersRequest.model_validate(payload.clean(orders)),
             retry=True,
         )
         OandaMutationResponsePolicy.raise_for_unexpected(response)
@@ -331,13 +355,15 @@ class OandaTransactionService:
         response = ensure_success(
             self.gateway.list_transactions(
                 self.account_id,
-                payload.clean(
-                    {
-                        "from": self._format_time(from_time),
-                        "to": self._format_time(to_time),
-                        "pageSize": page_size,
-                        "type": ",".join(types) if types is not None else None,
-                    }
+                om.TransactionsRequest.model_validate(
+                    payload.clean(
+                        {
+                            "from": self._format_time(from_time),
+                            "to": self._format_time(to_time),
+                            "pageSize": page_size,
+                            "type": tuple(types) if types is not None else None,
+                        }
+                    )
                 ),
             ),
             200,
@@ -362,12 +388,14 @@ class OandaTransactionService:
         response = ensure_success(
             self.gateway.get_transaction_range(
                 self.account_id,
-                payload.clean(
-                    {
-                        "from": from_id,
-                        "to": to_id,
-                        "type": ",".join(types) if types is not None else None,
-                    }
+                om.TransactionRangeRequest.model_validate(
+                    payload.clean(
+                        {
+                            "from": from_id,
+                            "to": to_id,
+                            "type": tuple(types) if types is not None else None,
+                        }
+                    )
                 ),
             ),
             200,
@@ -384,11 +412,13 @@ class OandaTransactionService:
         response = ensure_success(
             self.gateway.get_transactions_since(
                 self.account_id,
-                payload.clean(
-                    {
-                        "id": transaction_id,
-                        "type": ",".join(types) if types is not None else None,
-                    }
+                om.TransactionsSinceRequest.model_validate(
+                    payload.clean(
+                        {
+                            "id": transaction_id,
+                            "type": tuple(types) if types is not None else None,
+                        }
+                    )
                 ),
             ),
             200,

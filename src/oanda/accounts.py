@@ -14,6 +14,7 @@ from core import (
     Metadata,
 )
 
+import oanda.models as om
 import oanda.payload as payload
 from oanda.config import OandaSettings
 from oanda.constants import OANDA_PROVIDER
@@ -88,7 +89,11 @@ class OandaAccountManager(AccountManager):
         if margin_rate is not None:
             request["marginRate"] = str(margin_rate)
         response = ensure_success(
-            self.gateway.configure_account(str(account_id), request, retry=True),
+            self.gateway.configure_account(
+                str(account_id),
+                om.ConfigureAccountRequest.model_validate(request),
+                retry=True,
+            ),
             200,
         )
         body = self._metadata(response.body)
@@ -109,7 +114,9 @@ class OandaAccountManager(AccountManager):
         response = ensure_success(
             self.gateway.get_account_changes(
                 str(account_id),
-                {"sinceTransactionID": since_transaction_id},
+                om.AccountChangesRequest.model_validate(
+                    {"sinceTransactionID": since_transaction_id}
+                ),
             ),
             200,
         )

@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 from core import Account, AccountId, AccountSummary, CurrencyPair, Metadata
 
+import oanda.models as om
 from oanda import OANDA_PROVIDER
 from oanda.accounts import OandaAccountManager
 from tests.support import FakeResponse
@@ -15,7 +16,7 @@ class TestAccounts:
     def test_account_manager_delegates_account_reads_to_gateway_and_mapper(self) -> None:
         gateway = Mock()
         mapper = Mock()
-        account = Account.of({"id": "001", "provider": OANDA_PROVIDER})
+        account = Account(id=AccountId.of("001"), provider=OANDA_PROVIDER)
         summary = AccountSummary.model_validate({"account_id": "001", "currency": "USD"})
         gateway.list_accounts.return_value = FakeResponse(
             200,
@@ -65,7 +66,7 @@ class TestAccounts:
         gateway.get_account_instruments.assert_called_once_with("001")
         gateway.configure_account.assert_called_once_with(
             "001",
-            {"alias": "primary", "marginRate": "0.03"},
+            om.ConfigureAccountRequest.model_validate({"alias": "primary", "marginRate": "0.03"}),
             retry=True,
         )
         assert configured.provider == OANDA_PROVIDER
@@ -85,6 +86,6 @@ class TestAccounts:
 
         gateway.get_account_changes.assert_called_once_with(
             "001",
-            {"sinceTransactionID": "10"},
+            om.AccountChangesRequest.model_validate({"sinceTransactionID": "10"}),
         )
         assert changes["lastTransactionID"] == "11"

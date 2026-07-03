@@ -18,6 +18,7 @@ from core import (
 )
 
 import oanda.broker as broker_module
+import oanda.models as om
 from oanda.broker import OandaBroker
 from oanda.services.broker import OandaOrderService
 from tests.support import FakeResponse
@@ -148,7 +149,7 @@ class TestBroker:
         gateway.list_open_trades.assert_called_once_with("001")
         gateway.get_transactions_since.assert_called_once_with(
             "001",
-            {"id": "10", "type": "ORDER_FILL"},
+            om.TransactionsSinceRequest(id="10", type=(om.TransactionFilter.ORDER_FILL,)),
         )
 
     def test_broker_order_mutation_results_return_metadata(self) -> None:
@@ -169,7 +170,15 @@ class TestBroker:
         gateway.set_order_client_extensions.assert_called_once_with(
             "001",
             "100",
-            {"clientExtensions": {"id": "client", "tag": "tag", "comment": "comment"}},
+            om.SetOrderClientExtensionsRequest.model_validate(
+                {
+                    "clientExtensions": {
+                        "id": "client",
+                        "tag": "tag",
+                        "comment": "comment",
+                    }
+                }
+            ),
             retry=True,
         )
 

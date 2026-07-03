@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 from core import CandleGranularity, CurrencyPair, Money, Tick
 
+import oanda.models as om
 from oanda.source import OandaDataSource
 from tests.support import FakeResponse
 
@@ -47,10 +48,14 @@ class TestSource:
         assert result == (tick,)
         gateway.get_account_prices.assert_called_once_with(
             "001",
-            instruments="USD_JPY",
-            since="2026-01-01T00:00:00Z",
-            includeUnitsAvailable=True,
-            includeHomeConversions=True,
+            om.PricingRequest.model_validate(
+                {
+                    "instruments": ("USD_JPY",),
+                    "since": "2026-01-01T00:00:00Z",
+                    "includeUnitsAvailable": True,
+                    "includeHomeConversions": True,
+                }
+            ),
         )
         mapper.ticks_from_prices.assert_called_once_with(["price"])
 
@@ -67,7 +72,9 @@ class TestSource:
         gateway.get_account_candles.assert_called_once_with(
             "001",
             "USD_JPY",
-            {"price": "M", "granularity": "M1", "from": None, "to": None},
+            om.AccountCandlesRequest.model_validate(
+                {"price": "M", "granularity": "M1", "from": None, "to": None}
+            ),
         )
 
     def test_data_source_stream_prices_yields_mapped_non_heartbeat_parts(self) -> None:

@@ -4,6 +4,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Any
 
+import oanda.models as om
 from tests.support import FakeResponse, candle_namespace, price_namespace
 
 
@@ -11,7 +12,7 @@ class IntegrationGateway:
     def __init__(self) -> None:
         self.market_orders: list[dict[str, Any]] = []
         self.close_position_calls: list[tuple[str, dict[str, Any]]] = []
-        self.configure_account_calls: list[dict[str, Any]] = []
+        self.configure_account_calls: list[om.ConfigureAccountRequest] = []
 
     def list_accounts(self) -> FakeResponse:
         return FakeResponse(
@@ -52,7 +53,7 @@ class IntegrationGateway:
     def get_account_instruments(
         self,
         account_id: str,
-        request: dict[str, Any] | None = None,
+        request: om.AccountInstrumentsRequest | None = None,
     ) -> FakeResponse:
         _ = account_id
         _ = request
@@ -61,18 +62,18 @@ class IntegrationGateway:
     def configure_account(
         self,
         account_id: str,
-        request: dict[str, Any] | None = None,
+        request: om.ConfigureAccountRequest | None = None,
         **kwargs: Any,
     ) -> FakeResponse:
         _ = account_id
         _ = kwargs
-        self.configure_account_calls.append(request or {})
+        self.configure_account_calls.append(request or om.ConfigureAccountRequest())
         return FakeResponse(200, {"lastTransactionID": "11"})
 
     def get_account_changes(
         self,
         account_id: str,
-        request: dict[str, Any] | None = None,
+        request: om.AccountChangesRequest | None = None,
     ) -> FakeResponse:
         _ = account_id
         _ = request
@@ -139,13 +140,19 @@ class IntegrationGateway:
     def get_transactions_since(
         self,
         account_id: str,
-        request: dict[str, Any] | None = None,
+        request: om.TransactionsSinceRequest | None = None,
     ) -> FakeResponse:
         _ = request
         return FakeResponse(200, {"transactions": [self._transaction(account_id)]})
 
-    def get_account_prices(self, account_id: str, **kwargs: Any) -> FakeResponse:
+    def get_account_prices(
+        self,
+        account_id: str,
+        request: om.PricingRequest | None = None,
+        **kwargs: Any,
+    ) -> FakeResponse:
         _ = account_id
+        _ = request
         _ = kwargs
         return FakeResponse(200, {"prices": [price_namespace()]})
 
@@ -153,7 +160,7 @@ class IntegrationGateway:
         self,
         account_id: str,
         instrument: str,
-        request: dict[str, Any] | None = None,
+        request: om.AccountCandlesRequest | None = None,
         **kwargs: Any,
     ) -> FakeResponse:
         _ = account_id

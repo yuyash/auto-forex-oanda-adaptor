@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 
 import oanda.models as om
@@ -151,7 +150,7 @@ class OandaGateway:
     def get_account_instruments(
         self,
         account_id: str,
-        request: om.AccountInstrumentsRequest | Mapping[str, Any] | None = None,
+        request: om.AccountInstrumentsRequest | None = None,
     ) -> om.OandaResponse[om.AccountInstrumentsResponse]:
         """Get account tradable instruments."""
         return self.accounts.get_account_instruments(account_id, request)
@@ -159,7 +158,7 @@ class OandaGateway:
     def configure_account(
         self,
         account_id: str,
-        request: om.ConfigureAccountRequest | Mapping[str, Any] | None = None,
+        request: om.ConfigureAccountRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
@@ -170,7 +169,7 @@ class OandaGateway:
     def get_account_changes(
         self,
         account_id: str,
-        request: om.AccountChangesRequest | Mapping[str, Any] | None = None,
+        request: om.AccountChangesRequest | None = None,
     ) -> om.OandaResponse[om.AccountChangesResponse]:
         """Get account changes since a transaction ID."""
         return self.accounts.get_account_changes(account_id, request)
@@ -178,7 +177,7 @@ class OandaGateway:
     def create_order(
         self,
         account_id: str,
-        request: om.CreateOrderRequest | Mapping[str, Any] | None = None,
+        request: om.CreateOrderRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
@@ -189,7 +188,7 @@ class OandaGateway:
     def list_orders(
         self,
         account_id: str,
-        request: om.OrdersRequest | Mapping[str, Any] | None = None,
+        request: om.OrdersRequest | None = None,
     ) -> om.OandaResponse[om.OrdersResponse]:
         """List orders."""
         return self.orders.list_orders(account_id, request)
@@ -208,7 +207,7 @@ class OandaGateway:
         self,
         account_id: str,
         order_specifier: str,
-        request: om.ReplaceOrderRequest | Mapping[str, Any] | None = None,
+        request: om.ReplaceOrderRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
@@ -232,7 +231,7 @@ class OandaGateway:
         self,
         account_id: str,
         order_specifier: str,
-        request: om.SetOrderClientExtensionsRequest | Mapping[str, Any] | None = None,
+        request: om.SetOrderClientExtensionsRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
@@ -400,7 +399,7 @@ class OandaGateway:
         self,
         account_id: str,
         instrument: str,
-        request: om.ClosePositionRequest | Mapping[str, Any] | None = None,
+        request: om.ClosePositionRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
@@ -411,7 +410,7 @@ class OandaGateway:
     def get_account_prices(
         self,
         account_id: str,
-        request: om.PricingRequest | Mapping[str, Any] | None = None,
+        request: om.PricingRequest | None = None,
         **kwargs: Any,
     ) -> om.OandaResponse[om.PricingResponse]:
         """Get account prices."""
@@ -420,7 +419,7 @@ class OandaGateway:
     def stream_account_prices(
         self,
         account_id: str,
-        request: om.PricingStreamRequest | Mapping[str, Any] | None = None,
+        request: om.PricingStreamRequest | None = None,
         **kwargs: Any,
     ) -> om.OandaResponse[None]:
         """Stream account prices."""
@@ -430,7 +429,7 @@ class OandaGateway:
         self,
         account_id: str,
         instrument: str,
-        request: om.AccountCandlesRequest | Mapping[str, Any] | None = None,
+        request: om.AccountCandlesRequest | None = None,
         **kwargs: Any,
     ) -> om.OandaResponse[om.CandlestickResponse]:
         """Fetch account-specific candles."""
@@ -453,7 +452,7 @@ class OandaGateway:
     def list_trades(
         self,
         account_id: str,
-        request: om.TradesRequest | Mapping[str, Any] | None = None,
+        request: om.TradesRequest | None = None,
     ) -> om.OandaResponse[om.TradesResponse]:
         """List trades."""
         return self.trades.list_trades(account_id, request)
@@ -472,7 +471,7 @@ class OandaGateway:
         self,
         account_id: str,
         trade_specifier: str,
-        request: om.CloseTradeRequest | Mapping[str, Any] | None = None,
+        request: om.CloseTradeRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
@@ -484,7 +483,7 @@ class OandaGateway:
         self,
         account_id: str,
         trade_specifier: str,
-        request: om.SetTradeClientExtensionsRequest | Mapping[str, Any] | None = None,
+        request: om.SetTradeClientExtensionsRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
@@ -498,7 +497,7 @@ class OandaGateway:
         self,
         account_id: str,
         trade_specifier: str,
-        request: om.SetTradeDependentOrdersRequest | Mapping[str, Any] | None = None,
+        request: om.SetTradeDependentOrdersRequest | None = None,
         *,
         retry: bool = False,
         **kwargs: Any,
@@ -511,7 +510,7 @@ class OandaGateway:
     def list_transactions(
         self,
         account_id: str,
-        request: om.TransactionsRequest | Mapping[str, Any] | None = None,
+        request: om.TransactionsRequest | None = None,
     ) -> om.OandaResponse[om.TransactionPagesResponse]:
         """List transaction pages."""
         return self.transactions.list_transactions(account_id, request)
@@ -527,7 +526,7 @@ class OandaGateway:
     def get_transaction_range(
         self,
         account_id: str,
-        request: om.TransactionRangeRequest | Mapping[str, Any] | None = None,
+        request: om.TransactionRangeRequest | None = None,
         **kwargs: Any,
     ) -> om.OandaResponse[om.TransactionsResponse]:
         """Get a transaction ID range."""
@@ -536,7 +535,7 @@ class OandaGateway:
     def get_transactions_since(
         self,
         account_id: str,
-        request: om.TransactionsSinceRequest | Mapping[str, Any] | None = None,
+        request: om.TransactionsSinceRequest | None = None,
         **kwargs: Any,
     ) -> om.OandaResponse[om.TransactionsResponse]:
         """Get transactions since an ID."""

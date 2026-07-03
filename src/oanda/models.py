@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any, TypeAlias
+from typing import TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -3116,16 +3116,29 @@ class AccountChangesResponse(OandaModel):
     last_transaction_id: TransactionID | None = Field(default=None, alias="lastTransactionID")
 
 
+type OrderRequestPayload = (
+    OrderRequest
+    | GuaranteedStopLossOrderRequest
+    | LimitOrderRequest
+    | MarketIfTouchedOrderRequest
+    | MarketOrderRequest
+    | StopLossOrderRequest
+    | StopOrderRequest
+    | TakeProfitOrderRequest
+    | TrailingStopLossOrderRequest
+)
+
+
 class CreateOrderRequest(OandaModel):
     """Request body for POST /v3/accounts/{accountID}/orders."""
 
-    order: OrderRequest | dict[str, Any] | None = None
+    order: OrderRequestPayload | None = None
 
 
 class ReplaceOrderRequest(OandaModel):
     """Request body for PUT /v3/accounts/{accountID}/orders/{orderSpecifier}."""
 
-    order: OrderRequest | dict[str, Any] | None = None
+    order: OrderRequestPayload | None = None
 
 
 class OrdersRequest(OandaModel):

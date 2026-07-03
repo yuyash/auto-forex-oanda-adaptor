@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from core import Candle, CandleGranularity, CurrencyPair, DataSource, Tick
 
+import oanda.models as om
 from oanda.config import OandaSettings
 from oanda.errors import ensure_success
 from oanda.gateway import OandaGateway
@@ -73,12 +74,16 @@ class OandaDataSource(DataSource):
         response = ensure_success(
             self.gateway.get_account_prices(
                 self.account_id,
-                instruments=",".join(
-                    OandaInstrumentMapper.to_oanda(instrument) for instrument in instruments
+                om.PricingRequest.model_validate(
+                    {
+                        "instruments": tuple(
+                            OandaInstrumentMapper.to_oanda(instrument) for instrument in instruments
+                        ),
+                        "since": self._format_time(since),
+                        "includeUnitsAvailable": include_units_available,
+                        "includeHomeConversions": include_home_conversions,
+                    }
                 ),
-                since=self._format_time(since),
-                includeUnitsAvailable=include_units_available,
-                includeHomeConversions=include_home_conversions,
             ),
             200,
         )
@@ -98,12 +103,14 @@ class OandaDataSource(DataSource):
             self.gateway.get_account_candles(
                 self.account_id,
                 OandaInstrumentMapper.to_oanda(instrument),
-                {
-                    "price": "M",
-                    "granularity": granularity.value,
-                    "from": self._format_time(start_at),
-                    "to": self._format_time(end_at),
-                },
+                om.AccountCandlesRequest.model_validate(
+                    {
+                        "price": "M",
+                        "granularity": granularity.value,
+                        "from": self._format_time(start_at),
+                        "to": self._format_time(end_at),
+                    }
+                ),
             ),
             200,
         )
