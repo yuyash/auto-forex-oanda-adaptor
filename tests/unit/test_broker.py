@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -15,6 +14,7 @@ from core import (
     Position,
     PositionSide,
     PositionSideState,
+    Units,
 )
 
 import oanda.broker as broker_module
@@ -30,7 +30,7 @@ class TestBroker:
     def test_broker_place_order_uses_order_mapper_and_market_gateway(self) -> None:
         gateway = Mock()
         order_mapper = Mock()
-        order = Order(instrument=USD_JPY, side=OrderSide.BUY, units=Decimal("1000"))
+        order = Order(instrument=USD_JPY, side=OrderSide.BUY, units=Units("1000"))
         result = order.evolve(broker_order_id="100")
         response = FakeResponse(201, {"orderFillTransaction": SimpleNamespace(id="100")})
         order_mapper.order_kwargs.return_value = {"units": "1000", "instrument": "USD_JPY"}
@@ -68,7 +68,7 @@ class TestBroker:
             instrument=USD_JPY,
             long=PositionSideState(
                 side=PositionSide.LONG,
-                units=Decimal("1000"),
+                units=Units("1000"),
                 average_entry_price=Money.of("150.10", "JPY"),
             ),
         )
@@ -77,13 +77,13 @@ class TestBroker:
         close_order = Order(
             instrument=USD_JPY,
             side=OrderSide.SELL,
-            units=Decimal("250"),
+            units=Units("250"),
         )
         order_mapper.order_from_position_close_response.return_value = close_order
         broker = OandaBroker(account_id="001", gateway=gateway, order_mapper=order_mapper)
 
         assert (
-            broker.close_position(position=position, side=PositionSide.LONG, units=Decimal("250"))
+            broker.close_position(position=position, side=PositionSide.LONG, units=Units("250"))
             == close_order
         )
         gateway.close_position.assert_called_once_with(
@@ -101,7 +101,7 @@ class TestBroker:
             instrument=USD_JPY,
             long=PositionSideState(
                 side=PositionSide.LONG,
-                units=Decimal("1000"),
+                units=Units("1000"),
                 average_entry_price=Money.of("150.10", "JPY"),
             ),
         )

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import cast
 
-from core import AccountId, CurrencyPair, Money
+from core import AccountId, CurrencyPair, MarginRate, Money
 
 from oanda.accounts import OandaAccountManager
 from oanda.gateway import OandaGateway
@@ -20,7 +19,7 @@ class TestAccounts:
         summary = manager.get_account_summary(account_id)
         instruments = manager.get_account_instruments(account_id)
         configured = manager.configure_account(
-            account_id, alias="primary", margin_rate=Decimal("0.03")
+            account_id, alias="primary", margin_rate=MarginRate("0.03")
         )
         changes = manager.get_account_changes(account_id, since_transaction_id="10")
 

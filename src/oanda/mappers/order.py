@@ -18,6 +18,7 @@ from core import (
     OrderType,
     Position,
     PositionSide,
+    Units,
 )
 
 import oanda.models as om
@@ -83,7 +84,7 @@ class OandaOrderMapper:
             reject=reject,
             create=create,
         )
-        filled_units = (
+        filled_units = Units.of(
             abs(payload.decimal(payload.get(fill, "units", "0")))
             if fill is not None
             else Decimal("0")
@@ -123,7 +124,7 @@ class OandaOrderMapper:
         *,
         position: Position,
         side: PositionSide,
-        requested_units: Decimal,
+        planned_units: Units,
     ) -> Order:
         """Convert a close-position response into a normalized OANDA order."""
         body = payload.body(response)
@@ -148,10 +149,12 @@ class OandaOrderMapper:
             broker_order_id=self._broker_order_id(fill, create, cancel, reject),
             instrument=position.instrument,
             side=OrderSide.SELL if side == PositionSide.LONG else OrderSide.BUY,
-            units=requested_units,
-            filled_units=abs(payload.decimal(payload.get(fill, "units", "0")))
-            if fill is not None
-            else Decimal("0"),
+            units=planned_units,
+            filled_units=Units.of(
+                abs(payload.decimal(payload.get(fill, "units", "0")))
+                if fill is not None
+                else Decimal("0")
+            ),
             average_fill_price=self._fill_price(fill, position.instrument),
             reason=reason,
             metadata=reason.details,

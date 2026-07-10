@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core import Account, AccountId, AccountSummary, Currency, Money
+from core import Account, AccountId, AccountSummary, Currency, MarginRate, Money
 
 import oanda.models as om
 import oanda.payload as payload
@@ -45,7 +45,7 @@ class OandaAccountMapper:
                     nav=Money.of(payload.get(account, "NAV"), currency),
                     margin_used=Money.of(payload.get(account, "marginUsed"), currency),
                     margin_available=Money.of(payload.get(account, "marginAvailable"), currency),
-                    margin_rate=payload.decimal(payload.get(account, "marginRate"))
+                    margin_rate=MarginRate.of(payload.decimal(payload.get(account, "marginRate")))
                     if payload.get(account, "marginRate") is not None
                     else None,
                     open_trade_count=payload.get(account, "openTradeCount"),
@@ -60,7 +60,7 @@ class OandaAccountMapper:
                 hedging_enabled=payload.get(account, "hedgingEnabled"),
                 position_aggregation_mode=payload.get(account, "positionAggregationMode"),
                 guaranteed_stop_loss_order_mode=payload.get(account, "guaranteedStopLossOrderMode"),
-                withdrawal_limit=payload.decimal(payload.get(account, "withdrawalLimit"))
+                withdrawal_limit=Money.of(payload.get(account, "withdrawalLimit"), currency)
                 if payload.get(account, "withdrawalLimit") is not None
                 else None,
             )

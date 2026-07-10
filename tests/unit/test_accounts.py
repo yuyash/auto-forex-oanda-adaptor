@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from core import Account, AccountId, AccountSummary, CurrencyPair, Metadata
+from core import Account, AccountId, AccountSummary, CurrencyPair, MarginRate, Metadata
 
 import oanda.models as om
 from oanda import OANDA_PROVIDER
@@ -59,7 +58,7 @@ class TestAccounts:
         configured = manager.configure_account(
             account_id,
             alias="primary",
-            margin_rate=Decimal("0.03"),
+            margin_rate=MarginRate("0.03"),
         )
 
         assert instruments == (CurrencyPair.of("USD_JPY"), CurrencyPair.of("EUR_USD"))

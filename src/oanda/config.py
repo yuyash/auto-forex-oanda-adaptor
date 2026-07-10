@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from enum import StrEnum
 
-from pydantic import Field, SecretStr, computed_field
+from pydantic import Field, SecretStr, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,13 +47,25 @@ class OandaSettings(BaseSettings):
     port: int = Field(default=443, gt=0)
     ssl: bool = True
     application: str = "AutoForexV2"
-    poll_timeout: int = Field(default=10, gt=0)
-    stream_timeout: int = Field(default=60, gt=0)
+    poll_timeout: timedelta = timedelta(seconds=10)
+    stream_timeout: timedelta = timedelta(seconds=60)
     stream_chunk_size: int = Field(default=512, gt=0)
     retry_attempts: int = Field(default=3, ge=1)
-    retry_initial_seconds: float = Field(default=0.25, ge=0)
-    retry_max_seconds: float = Field(default=4.0, ge=0)
+    retry_initial_delay: timedelta = timedelta(seconds=0.25)
+    retry_max_delay: timedelta = timedelta(seconds=4)
     retry_multiplier: float = Field(default=2.0, ge=1)
+
+    @model_validator(mode="after")
+    def _validate_durations(self) -> OandaSettings:
+        if self.poll_timeout.total_seconds() <= 0:
+            raise ValueError("poll_timeout must be positive")
+        if self.stream_timeout.total_seconds() <= 0:
+            raise ValueError("stream_timeout must be positive")
+        if self.retry_initial_delay.total_seconds() < 0:
+            raise ValueError("retry_initial_delay must not be negative")
+        if self.retry_max_delay.total_seconds() < 0:
+            raise ValueError("retry_max_delay must not be negative")
+        return self
 
     @computed_field
     @property

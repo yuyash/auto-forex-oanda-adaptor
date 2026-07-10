@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 import oanda.models as om
@@ -29,8 +30,8 @@ class OandaGateway:
         port: int = 443,
         ssl: bool = True,
         application: str = "AutoForexV2",
-        poll_timeout: int = 10,
-        stream_timeout: int = 60,
+        poll_timeout: timedelta = timedelta(seconds=10),
+        stream_timeout: timedelta = timedelta(seconds=60),
         retry_policy: OandaRetryPolicy | None = None,
         opener: Any | None = None,
         transport: OandaTransport | None = None,
@@ -100,12 +101,12 @@ class OandaGateway:
         return self.transport.application
 
     @property
-    def poll_timeout(self) -> int:
+    def poll_timeout(self) -> timedelta:
         """Return the non-streaming request timeout."""
         return self.transport.poll_timeout
 
     @property
-    def stream_timeout(self) -> int:
+    def stream_timeout(self) -> timedelta:
         """Return the streaming request timeout."""
         return self.transport.stream_timeout
 

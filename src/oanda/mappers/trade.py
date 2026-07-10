@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core import BrokerTradeId, Currency, CurrencyPair, Money, PositionSide, Trade
+from core import BrokerTradeId, Currency, CurrencyPair, Money, PositionSide, Trade, Units
 
 import oanda.models as om
 import oanda.payload as payload
@@ -41,7 +41,7 @@ class OandaTradeMapper:
             id=BrokerTradeId.of(str(payload.get(item, "id"))),
             instrument=instrument,
             side=side,
-            units=abs(current_units),
+            units=Units.of(abs(current_units)),
             price=Money.of(price, instrument.quote) if price is not None else None,
             open_time=payload.parse_time(payload.get(item, "openTime"))
             if payload.get(item, "openTime")
@@ -62,17 +62,25 @@ class OandaTradeMapper:
             OandaTrade(
                 trade=trade,
                 client_trade_id=payload.get(payload.get(item, "clientExtensions"), "id"),
-                initial_units=abs(payload.decimal(payload.get(item, "initialUnits")))
+                initial_units=Units.of(abs(payload.decimal(payload.get(item, "initialUnits"))))
                 if payload.get(item, "initialUnits") is not None
                 else None,
-                initial_margin_required=payload.decimal(payload.get(item, "initialMarginRequired"))
+                initial_margin_required=Money.of(
+                    payload.get(item, "initialMarginRequired"),
+                    self.account_currency,
+                )
                 if payload.get(item, "initialMarginRequired") is not None
                 else None,
-                realized_pl_value=payload.decimal(realized_pl) if realized_pl is not None else None,
-                financing=payload.decimal(payload.get(item, "financing"))
+                realized_pl_value=Money.of(realized_pl, self.account_currency)
+                if realized_pl is not None
+                else None,
+                financing=Money.of(payload.get(item, "financing"), self.account_currency)
                 if payload.get(item, "financing") is not None
                 else None,
-                dividend_adjustment=payload.decimal(payload.get(item, "dividendAdjustment"))
+                dividend_adjustment=Money.of(
+                    payload.get(item, "dividendAdjustment"),
+                    self.account_currency,
+                )
                 if payload.get(item, "dividendAdjustment") is not None
                 else None,
                 close_transaction_ids=tuple(payload.get(item, "closingTransactionIDs", ()) or ()),

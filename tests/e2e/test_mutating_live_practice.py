@@ -14,6 +14,7 @@ from core import (
     OrderStatus,
     OrderType,
     PositionSide,
+    Units,
 )
 
 from oanda import OandaApiError, OandaProvider, OandaSettings
@@ -52,7 +53,7 @@ class TestMutatingLivePractice:
         self,
         mutating_oanda_provider: OandaProvider,
         e2e_instrument: CurrencyPair,
-        mutating_units: Decimal,
+        mutating_units: Units,
     ) -> None:
         order_id: str | None = None
         replacement_id: str | None = None
@@ -98,7 +99,7 @@ class TestMutatingLivePractice:
         self,
         mutating_oanda_provider: OandaProvider,
         e2e_instrument: CurrencyPair,
-        mutating_units: Decimal,
+        mutating_units: Units,
     ) -> None:
         _skip_if_existing_trade_or_position(mutating_oanda_provider, e2e_instrument)
         trade_id: str | None = None
@@ -151,7 +152,7 @@ class TestMutatingLivePractice:
         self,
         mutating_oanda_provider: OandaProvider,
         e2e_instrument: CurrencyPair,
-        mutating_units: Decimal,
+        mutating_units: Units,
     ) -> None:
         _skip_if_existing_trade_or_position(mutating_oanda_provider, e2e_instrument)
         opened = False
@@ -185,7 +186,7 @@ class TestMutatingLivePractice:
 def _far_buy_limit_order(
     provider: OandaProvider,
     instrument: CurrencyPair,
-    units: Decimal,
+    units: Units,
 ) -> Order:
     tick = next(iter(provider.data.prices(instruments=(instrument,))))
     bid = tick.bid.require_currency(instrument.quote).amount
@@ -244,7 +245,7 @@ def _close_trade_if_present(provider: OandaProvider, trade_id: str | None) -> No
 def _close_position_if_present(
     provider: OandaProvider,
     instrument: CurrencyPair,
-    units: Decimal,
+    units: Units,
 ) -> None:
     try:
         position = provider.broker.get_position(instrument)

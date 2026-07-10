@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from core import Account, Order, Position, Trade, Transaction
 
-from oanda.domain import (
+from oanda.snapshots import (
     OandaAccount,
     OandaOrder,
     OandaPosition,

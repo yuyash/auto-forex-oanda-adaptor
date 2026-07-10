@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
@@ -44,8 +44,8 @@ class TestGateway:
     def test_retry_policy_validates_values(self) -> None:
         with pytest.raises(ValueError, match="retry attempts"):
             OandaRetryPolicy(attempts=0)
-        with pytest.raises(ValueError, match="retry initial seconds"):
-            OandaRetryPolicy(initial_seconds=-1)
+        with pytest.raises(ValueError, match="retry initial delay"):
+            OandaRetryPolicy(initial_delay=timedelta(seconds=-1))
 
     def test_gateway_from_settings_uses_settings_values(self) -> None:
         settings = OandaSettings(
@@ -718,7 +718,11 @@ class TestGateway:
             hostname="api.example.test",
             stream_hostname="stream.example.test",
             opener=opener,
-            retry_policy=OandaRetryPolicy(attempts=2, initial_seconds=0, max_seconds=0),
+            retry_policy=OandaRetryPolicy(
+                attempts=2,
+                initial_delay=timedelta(seconds=0),
+                max_delay=timedelta(seconds=0),
+            ),
         )
 
         response = gateway.list_accounts()
@@ -741,7 +745,11 @@ class TestGateway:
             hostname="api.example.test",
             stream_hostname="stream.example.test",
             opener=opener,
-            retry_policy=OandaRetryPolicy(attempts=3, initial_seconds=0, max_seconds=0),
+            retry_policy=OandaRetryPolicy(
+                attempts=3,
+                initial_delay=timedelta(seconds=0),
+                max_delay=timedelta(seconds=0),
+            ),
         )
 
         with pytest.raises(OandaAuthenticationError):

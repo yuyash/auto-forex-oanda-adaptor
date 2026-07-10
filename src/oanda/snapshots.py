@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import Decimal
-from typing import Any, Self
+from typing import Any, Self, cast
 
 from core import (
     Account,
@@ -25,6 +26,7 @@ from core import (
     PositionSideState,
     Trade,
     Transaction,
+    Units,
 )
 from pydantic import Field, model_validator
 
@@ -99,7 +101,7 @@ class OandaAccountSummary(DomainModel):
     hedging_enabled: bool | None = None
     position_aggregation_mode: str | None = None
     guaranteed_stop_loss_order_mode: str | None = None
-    withdrawal_limit: Decimal | None = None
+    withdrawal_limit: Money | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -108,8 +110,17 @@ class OandaAccountSummary(DomainModel):
             return data
         if isinstance(data, AccountSummary):
             return {"summary": data}
-        if not isinstance(data, dict) or "summary" in data:
+        if not isinstance(data, dict):
             return data
+        if "summary" in data:
+            normalized = dict(data)
+            summary = AccountSummary.model_validate(normalized["summary"])
+            normalized["summary"] = summary
+            normalized["withdrawal_limit"] = cls._money(
+                normalized.get("withdrawal_limit"),
+                summary.currency,
+            )
+            return normalized
 
         return {
             "summary": {
@@ -132,8 +143,20 @@ class OandaAccountSummary(DomainModel):
             "hedging_enabled": data.get("hedging_enabled"),
             "position_aggregation_mode": data.get("position_aggregation_mode"),
             "guaranteed_stop_loss_order_mode": data.get("guaranteed_stop_loss_order_mode"),
-            "withdrawal_limit": data.get("withdrawal_limit"),
+            "withdrawal_limit": cls._money(
+                data.get("withdrawal_limit"),
+                data.get("currency"),
+            ),
         }
+
+    @staticmethod
+    def _money(value: object, currency: object) -> Money | None:
+        if value is None or isinstance(value, Money):
+            return value
+        return Money.coerce(
+            cast(Money | Decimal | str | Mapping[str, Any], value),
+            Currency.of(cast(Currency | str, currency)),
+        )
 
     @property
     def account_id(self) -> AccountId:
@@ -243,7 +266,7 @@ class OandaOrder(DomainModel):
         return self.order.side
 
     @property
-    def filled_units(self) -> Decimal:
+    def filled_units(self) -> Units:
         """Return filled order units."""
         return self.order.filled_units
 
@@ -262,10 +285,10 @@ class OandaPosition(DomainModel):
     """OANDA position snapshot with a composed Core position."""
 
     position: Position
-    pl: Decimal | None = None
-    resettable_pl: Decimal | None = None
-    financing: Decimal | None = None
-    margin_used: Decimal | None = None
+    pl: Money | None = None
+    resettable_pl: Money | None = None
+    financing: Money | None = None
+    margin_used: Money | None = None
     long_trade_ids: tuple[str, ...] = ()
     short_trade_ids: tuple[str, ...] = ()
 
@@ -276,8 +299,18 @@ class OandaPosition(DomainModel):
             return data
         if isinstance(data, Position):
             return {"position": data}
-        if not isinstance(data, dict) or "position" in data:
+        if not isinstance(data, dict):
             return data
+        if "position" in data:
+            normalized = dict(data)
+            normalized["pl"] = cls._quote_money(normalized.get("pl"), normalized)
+            normalized["resettable_pl"] = cls._quote_money(
+                normalized.get("resettable_pl"),
+                normalized,
+            )
+            normalized["financing"] = cls._quote_money(normalized.get("financing"), normalized)
+            normalized["margin_used"] = cls._quote_money(normalized.get("margin_used"), normalized)
+            return normalized
 
         return {
             "position": {
@@ -287,13 +320,28 @@ class OandaPosition(DomainModel):
                 "unrealized_pl": data.get("unrealized_pl"),
                 "metadata": data.get("metadata", Metadata()),
             },
-            "pl": data.get("pl"),
-            "resettable_pl": data.get("resettable_pl"),
-            "financing": data.get("financing"),
-            "margin_used": data.get("margin_used"),
+            "pl": cls._quote_money(data.get("pl"), data),
+            "resettable_pl": cls._quote_money(data.get("resettable_pl"), data),
+            "financing": cls._quote_money(data.get("financing"), data),
+            "margin_used": cls._quote_money(data.get("margin_used"), data),
             "long_trade_ids": data.get("long_trade_ids", ()),
             "short_trade_ids": data.get("short_trade_ids", ()),
         }
+
+    @staticmethod
+    def _quote_money(value: object, data: dict[str, Any]) -> Money | None:
+        if value is None or isinstance(value, Money):
+            return value
+        position = data.get("position")
+        if isinstance(position, Position):
+            currency = position.instrument.quote
+        elif isinstance(position, dict):
+            currency = Position.model_validate(position).instrument.quote
+        else:
+            currency = Position.model_validate(
+                {"instrument": data.get("instrument")}
+            ).instrument.quote
+        return Money.coerce(cast(Money | Decimal | str | Mapping[str, Any], value), currency)
 
     @property
     def long(self) -> PositionSideState | None:
@@ -321,11 +369,11 @@ class OandaTrade(DomainModel):
 
     trade: Trade
     client_trade_id: str | None = None
-    initial_units: Decimal | None = None
-    initial_margin_required: Decimal | None = None
-    realized_pl_value: Decimal | None = None
-    financing: Decimal | None = None
-    dividend_adjustment: Decimal | None = None
+    initial_units: Units | None = None
+    initial_margin_required: Money | None = None
+    realized_pl_value: Money | None = None
+    financing: Money | None = None
+    dividend_adjustment: Money | None = None
     close_transaction_ids: tuple[str, ...] = ()
 
     @model_validator(mode="before")
@@ -335,8 +383,25 @@ class OandaTrade(DomainModel):
             return data
         if isinstance(data, Trade):
             return {"trade": data}
-        if not isinstance(data, dict) or "trade" in data:
+        if not isinstance(data, dict):
             return data
+        if "trade" in data:
+            normalized = dict(data)
+            normalized["initial_units"] = cls._units(normalized.get("initial_units"))
+            normalized["initial_margin_required"] = cls._quote_money(
+                normalized.get("initial_margin_required"),
+                normalized,
+            )
+            normalized["realized_pl_value"] = cls._quote_money(
+                normalized.get("realized_pl_value"),
+                normalized,
+            )
+            normalized["financing"] = cls._quote_money(normalized.get("financing"), normalized)
+            normalized["dividend_adjustment"] = cls._quote_money(
+                normalized.get("dividend_adjustment"),
+                normalized,
+            )
+            return normalized
 
         return {
             "trade": {
@@ -353,13 +418,42 @@ class OandaTrade(DomainModel):
                 "metadata": data.get("metadata", Metadata()),
             },
             "client_trade_id": data.get("client_trade_id"),
-            "initial_units": data.get("initial_units"),
-            "initial_margin_required": data.get("initial_margin_required"),
-            "realized_pl_value": data.get("realized_pl_value"),
-            "financing": data.get("financing"),
-            "dividend_adjustment": data.get("dividend_adjustment"),
+            "initial_units": cls._units(data.get("initial_units")),
+            "initial_margin_required": cls._quote_money(
+                data.get("initial_margin_required"),
+                data,
+            ),
+            "realized_pl_value": cls._quote_money(data.get("realized_pl_value"), data),
+            "financing": cls._quote_money(data.get("financing"), data),
+            "dividend_adjustment": cls._quote_money(data.get("dividend_adjustment"), data),
             "close_transaction_ids": data.get("close_transaction_ids", ()),
         }
+
+    @staticmethod
+    def _units(value: object) -> Units | None:
+        if value is None or isinstance(value, Units):
+            return value
+        return Units.of(cast(Decimal | str, value))
+
+    @staticmethod
+    def _quote_money(value: object, data: dict[str, Any]) -> Money | None:
+        if value is None or isinstance(value, Money):
+            return value
+        trade = data.get("trade")
+        if isinstance(trade, Trade):
+            currency = trade.instrument.quote
+        elif isinstance(trade, dict):
+            currency = Trade.model_validate(trade).instrument.quote
+        else:
+            currency = Trade.model_validate(
+                {
+                    "id": data.get("id"),
+                    "instrument": data.get("instrument"),
+                    "side": data.get("side"),
+                    "units": data.get("units") or "1",
+                }
+            ).instrument.quote
+        return Money.coerce(cast(Money | Decimal | str | Mapping[str, Any], value), currency)
 
     @property
     def id(self) -> object:

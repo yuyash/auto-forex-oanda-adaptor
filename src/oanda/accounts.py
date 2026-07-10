@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Any, Protocol
 
 from core import (
@@ -11,6 +10,7 @@ from core import (
     AccountManager,
     AccountSummary,
     CurrencyPair,
+    MarginRate,
     Metadata,
 )
 
@@ -98,7 +98,7 @@ class OandaAccountManager(AccountManager):
         account_id: AccountId,
         *,
         alias: str | None = None,
-        margin_rate: Decimal | None = None,
+        margin_rate: MarginRate | None = None,
     ) -> Account:
         """Update OANDA account alias or margin rate."""
         request: dict[str, str] = {}

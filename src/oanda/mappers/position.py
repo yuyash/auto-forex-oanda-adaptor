@@ -11,6 +11,7 @@ from core import (
     Position,
     PositionSide,
     PositionSideState,
+    Units,
 )
 
 import oanda.models as om
@@ -62,16 +63,16 @@ class OandaPositionMapper:
         return position_to_core(
             OandaPosition(
                 position=position,
-                pl=payload.decimal(payload.get(item, "pl"))
+                pl=Money.of(payload.get(item, "pl"), self.account_currency)
                 if payload.get(item, "pl") is not None
                 else None,
-                resettable_pl=payload.decimal(payload.get(item, "resettablePL"))
+                resettable_pl=Money.of(payload.get(item, "resettablePL"), self.account_currency)
                 if payload.get(item, "resettablePL") is not None
                 else None,
-                financing=payload.decimal(payload.get(item, "financing"))
+                financing=Money.of(payload.get(item, "financing"), self.account_currency)
                 if payload.get(item, "financing") is not None
                 else None,
-                margin_used=payload.decimal(payload.get(item, "marginUsed"))
+                margin_used=Money.of(payload.get(item, "marginUsed"), self.account_currency)
                 if payload.get(item, "marginUsed") is not None
                 else None,
                 long_trade_ids=tuple(payload.get(payload.get(item, "long"), "tradeIDs", ()) or ()),
@@ -93,7 +94,7 @@ class OandaPositionMapper:
             return None
         return PositionSideState(
             side=side,
-            units=units,
+            units=Units.of(units),
             average_entry_price=Money.of(average_price, instrument.quote),
             broker_position_id=BrokerPositionId.of(f"{instrument.symbol}:{side.value}"),
             unrealized_pl=self._unrealized_pl(position_side),

@@ -14,6 +14,7 @@ from core import (
     OrderStatus,
     OrderType,
     PositionSide,
+    Units,
 )
 
 import oanda.models as om
@@ -71,7 +72,7 @@ class TestMappers:
         order = Order(
             instrument=USD_JPY,
             side=OrderSide.SELL,
-            units=Decimal("1000"),
+            units=Units("1000"),
             order_type=OrderType.MARKET,
         )
         response = cast(
@@ -98,7 +99,7 @@ class TestMappers:
 
         assert kwargs["units"] == "-1000"
         assert mapped.status == OrderStatus.FILLED
-        assert mapped.filled_units == Decimal("1000")
+        assert mapped.filled_units == Units("1000")
         assert mapped.average_fill_price == Money.of("150.12", "JPY")
 
     def test_position_trade_transaction_and_market_data_mappers(self) -> None:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from decimal import Decimal
-
 from core import (
     Account,
     AccountSummary,
@@ -12,6 +10,7 @@ from core import (
     PositionSide,
     Trade,
     Transaction,
+    Units,
 )
 
 from oanda import OANDA_PROVIDER
@@ -23,7 +22,7 @@ from oanda.converters import (
     trade_to_core,
     transaction_to_core,
 )
-from oanda.domain import (
+from oanda.snapshots import (
     OandaAccount,
     OandaAccountSummary,
     OandaOrder,
@@ -64,7 +63,7 @@ class TestDomain:
 
         assert summary.balance == Money.of("1000.00", "USD")
         assert summary.financing_mode == "NO_FINANCING"
-        assert summary.withdrawal_limit == Decimal("900.00")
+        assert summary.withdrawal_limit == Money.of("900.00", "USD")
         assert isinstance(account_summary_to_core(summary), AccountSummary)
 
     def test_oanda_order_position_trade_and_transaction_compose_core_models(self) -> None:
@@ -112,10 +111,10 @@ class TestDomain:
         assert isinstance(order_to_core(order), Order)
         assert position.long is not None
         assert position.long.side == PositionSide.LONG
-        assert position.pl == Decimal("1.25")
+        assert position.pl == Money.of("1.25", "JPY")
         assert isinstance(position_to_core(position), Position)
-        assert trade.initial_units == Decimal("1000")
-        assert trade.financing == Decimal("0.10")
+        assert trade.initial_units == Units("1000")
+        assert trade.financing == Money.of("0.10", "JPY")
         assert isinstance(trade_to_core(trade), Trade)
         assert transaction.reason == "MARKET_ORDER"
         assert isinstance(transaction_to_core(transaction), Transaction)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from datetime import datetime
-from decimal import Decimal
 
 from core import (
     Broker,
@@ -16,6 +15,7 @@ from core import (
     PositionSide,
     Trade,
     Transaction,
+    Units,
 )
 
 from oanda.config import OandaSettings
@@ -101,7 +101,7 @@ class OandaBroker(Broker):
         *,
         position: Position,
         side: PositionSide,
-        units: Decimal | None = None,
+        units: Units | None = None,
     ) -> Order:
         """Close all or part of an OANDA position."""
         return self._orders.close_position(position=position, side=side, units=units)
@@ -158,7 +158,7 @@ class OandaBroker(Broker):
         """Return one OANDA trade."""
         return self._trades.get_trade(trade_id)
 
-    def close_trade(self, trade_id: str, *, units: Decimal | None = None) -> Metadata:
+    def close_trade(self, trade_id: str, *, units: Units | None = None) -> Metadata:
         """Close all or part of an OANDA trade."""
         return self._trades.close_trade(trade_id, units=units)
 

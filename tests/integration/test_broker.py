@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import cast
 
-from core import CurrencyPair, Money, Order, OrderSide, OrderStatus, PositionSide
+from core import CurrencyPair, Money, Order, OrderSide, OrderStatus, PositionSide, Units
 
 from oanda.broker import OandaBroker
 from oanda.gateway import OandaGateway
@@ -18,13 +17,13 @@ class TestBroker:
         broker = OandaBroker(account_id="001", gateway=cast(OandaGateway, gateway))
 
         order = broker.place_order(
-            Order(instrument=USD_JPY, side=OrderSide.BUY, units=Decimal("1000"))
+            Order(instrument=USD_JPY, side=OrderSide.BUY, units=Units("1000"))
         )
         position = broker.positions(instrument=USD_JPY)[0]
         close_order = broker.close_position(
             position=position,
             side=PositionSide.LONG,
-            units=Decimal("250"),
+            units=Units("250"),
         )
         trade = broker.list_open_trades()[0]
         transaction = broker.get_transactions_since("299")[0]

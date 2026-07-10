@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime
-from decimal import Decimal
 from typing import Any, Protocol
 
 from core import (
@@ -17,6 +16,7 @@ from core import (
     PositionSide,
     Trade,
     Transaction,
+    Units,
 )
 
 import oanda.models as om
@@ -180,12 +180,13 @@ class OandaOrderService:
         *,
         position: Position,
         side: PositionSide,
-        units: Decimal | None = None,
+        units: Units | None = None,
     ) -> Order:
         """Close all or part of an OANDA position."""
         state = position.require_side(side)
-        requested_units = (units or state.units).copy_abs()
-        kwargs = self.close_position_kwargs(side=side, units=requested_units)
+        source_units = units if units is not None else state.units
+        planned_units = Units.of(source_units.copy_abs())
+        kwargs = self.close_position_kwargs(side=side, units=planned_units)
         response = self.gateway.close_position(
             self.account_id,
             OandaInstrumentMapper.to_oanda(position.instrument),
@@ -197,7 +198,7 @@ class OandaOrderService:
             response,
             position=position,
             side=side,
-            requested_units=requested_units,
+            planned_units=planned_units,
         )
 
     def list_orders(self, **filters: object) -> Sequence[Metadata]:
@@ -262,7 +263,7 @@ class OandaOrderService:
         return payload.metadata(response.body)
 
     @staticmethod
-    def close_position_kwargs(*, side: PositionSide, units: Decimal) -> dict[str, str]:
+    def close_position_kwargs(*, side: PositionSide, units: Units) -> dict[str, str]:
         """Build OANDA side-specific close-position units."""
         amount = str(units)
         if side == PositionSide.LONG:
@@ -382,7 +383,7 @@ class OandaTradeService:
         response = ensure_success(self.gateway.get_trade(self.account_id, trade_id), 200)
         return self._mapper().trade_from_response(response)
 
-    def close_trade(self, trade_id: str, *, units: Decimal | None = None) -> Metadata:
+    def close_trade(self, trade_id: str, *, units: Units | None = None) -> Metadata:
         """Close all or part of an OANDA trade."""
         request = (
             om.CloseTradeRequest.model_validate({"units": str(units)})

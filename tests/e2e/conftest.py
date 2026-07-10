@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from decimal import Decimal
+from datetime import timedelta
 
 import pytest
-from core import AccountId, CurrencyPair
+from core import AccountId, CurrencyPair, Units
 from pydantic import SecretStr
 
 from oanda import OandaEnvironment, OandaProvider, OandaSettings
@@ -28,7 +28,7 @@ def oanda_settings() -> OandaSettings:
         account_id=account_id,
         access_token=SecretStr(access_token),
         environment=environment,
-        stream_timeout=10,
+        stream_timeout=timedelta(seconds=10),
     )
 
 
@@ -54,8 +54,8 @@ def mutating_oanda_provider(
 
 
 @pytest.fixture
-def mutating_units() -> Decimal:
-    return Decimal(os.getenv("OANDA_MUTATING_E2E_UNITS", "1").strip())
+def mutating_units() -> Units:
+    return Units(os.getenv("OANDA_MUTATING_E2E_UNITS", "1").strip())
 
 
 @pytest.fixture

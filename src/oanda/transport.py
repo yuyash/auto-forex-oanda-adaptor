@@ -6,7 +6,7 @@ import json
 import logging
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Any, TypeVar, cast, overload
@@ -48,19 +48,31 @@ class OandaRetryPolicy:
     """Retry policy for retryable OANDA transport and API failures."""
 
     attempts: int = 3
-    initial_seconds: float = 0.25
-    max_seconds: float = 4.0
+    initial_delay: timedelta = timedelta(seconds=0.25)
+    max_delay: timedelta = timedelta(seconds=4)
     multiplier: float = 2.0
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "initial_delay",
+            OandaTransport._duration(
+                self.initial_delay,
+                name="retry initial delay",
+                allow_zero=True,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "max_delay",
+            OandaTransport._duration(
+                self.max_delay,
+                name="retry max delay",
+                allow_zero=True,
+            ),
+        )
         if self.attempts < 1:
             msg = "retry attempts must be greater than or equal to 1"
-            raise ValueError(msg)
-        if self.initial_seconds < 0:
-            msg = "retry initial seconds must be greater than or equal to 0"
-            raise ValueError(msg)
-        if self.max_seconds < 0:
-            msg = "retry max seconds must be greater than or equal to 0"
             raise ValueError(msg)
         if self.multiplier < 1:
             msg = "retry multiplier must be greater than or equal to 1"
@@ -71,8 +83,8 @@ class OandaRetryPolicy:
         """Create a retry policy from OANDA settings."""
         return cls(
             attempts=settings.retry_attempts,
-            initial_seconds=settings.retry_initial_seconds,
-            max_seconds=settings.retry_max_seconds,
+            initial_delay=settings.retry_initial_delay,
+            max_delay=settings.retry_max_delay,
             multiplier=settings.retry_multiplier,
         )
 
@@ -82,8 +94,8 @@ class OandaRetryPolicy:
             retry=retry_if_exception_type(_RETRYABLE_EXCEPTIONS),
             stop=stop_after_attempt(self.attempts),
             wait=wait_exponential(
-                multiplier=self.initial_seconds,
-                max=self.max_seconds,
+                multiplier=self.initial_delay.total_seconds(),
+                max=self.max_delay.total_seconds(),
                 exp_base=self.multiplier,
             ),
             before_sleep=before_sleep_log(_LOGGER, logging.WARNING),
@@ -103,8 +115,8 @@ class OandaTransport:
         port: int = 443,
         ssl: bool = True,
         application: str = "AutoForexV2",
-        poll_timeout: int = 10,
-        stream_timeout: int = 60,
+        poll_timeout: timedelta = timedelta(seconds=10),
+        stream_timeout: timedelta = timedelta(seconds=60),
         retry_policy: OandaRetryPolicy | None = None,
         opener: Any | None = None,
     ) -> None:
@@ -114,8 +126,8 @@ class OandaTransport:
         self.port = port
         self.ssl = ssl
         self.application = application
-        self.poll_timeout = poll_timeout
-        self.stream_timeout = stream_timeout
+        self.poll_timeout = self._duration(poll_timeout, name="poll_timeout")
+        self.stream_timeout = self._duration(stream_timeout, name="stream_timeout")
         self.retry_policy = retry_policy or OandaRetryPolicy()
         self.opener = opener or build_opener()
 
@@ -225,7 +237,7 @@ class OandaTransport:
         url = self._url(path, query=query)
         request = self._build_request(method, url, body=body)
         try:
-            response = self.opener.open(request, timeout=self.poll_timeout)
+            response = self.opener.open(request, timeout=self.poll_timeout.total_seconds())
             return self._read_response(response, url)
         except HTTPError as exc:
             return self._read_response(exc, url)
@@ -247,7 +259,7 @@ class OandaTransport:
         url = self._url(path, query=query, stream=True)
         request = self._build_request(method, url, body=None)
         try:
-            response = self.opener.open(request, timeout=self.stream_timeout)
+            response = self.opener.open(request, timeout=self.stream_timeout.total_seconds())
         except HTTPError as exc:
             body = exc.read()
             raw = om.OandaHttpResponse(
@@ -319,6 +331,16 @@ class OandaTransport:
         if not body:
             return {}
         return json.loads(body.decode("utf-8"))
+
+    @staticmethod
+    def _duration(value: timedelta, *, name: str, allow_zero: bool = False) -> timedelta:
+        duration = value
+        if allow_zero:
+            if duration.total_seconds() < 0:
+                raise ValueError(f"{name} must not be negative")
+        elif duration.total_seconds() <= 0:
+            raise ValueError(f"{name} must be positive")
+        return duration
 
     @classmethod
     def _model_dump(cls, value: Any) -> Any:

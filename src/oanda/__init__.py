@@ -14,14 +14,6 @@ from oanda.converters import (
     trade_to_core,
     transaction_to_core,
 )
-from oanda.domain import (
-    OandaAccount,
-    OandaAccountSummary,
-    OandaOrder,
-    OandaPosition,
-    OandaTrade,
-    OandaTransaction,
-)
 from oanda.errors import (
     OandaAdapterError,
     OandaApiError,
@@ -47,6 +39,14 @@ from oanda.mappers import (
 )
 from oanda.models import OandaModel, OandaResponse
 from oanda.provider import OandaProvider
+from oanda.snapshots import (
+    OandaAccount,
+    OandaAccountSummary,
+    OandaOrder,
+    OandaPosition,
+    OandaTrade,
+    OandaTransaction,
+)
 from oanda.source import OandaDataSource
 
 __all__ = [
