@@ -20,9 +20,13 @@ from core import (
     PositionSide,
 )
 
+import oanda.models as om
 import oanda.payload as payload
-from oanda.domain import OandaOrder
+from oanda.converters import order_to_core
 from oanda.mappers.instrument import OandaInstrumentMapper
+from oanda.snapshots import OandaOrder
+
+type OandaOrderMutationResponse = om.OandaResponse[om.OrderTransactionResponse]
 
 
 class OandaOrderMapper:
@@ -59,7 +63,11 @@ class OandaOrderMapper:
         msg = f"unsupported order type: {order.order_type}"
         raise ValueError(msg)
 
-    def order_from_order_response(self, response: Any, order: Order) -> OandaOrder:
+    def order_from_order_response(
+        self,
+        response: OandaOrderMutationResponse,
+        order: Order,
+    ) -> Order:
         """Convert a create-order response into a normalized OANDA order."""
         body = payload.body(response)
         fill = payload.first(body, "orderFillTransaction")
@@ -87,35 +95,36 @@ class OandaOrderMapper:
             details=self._result_details(response, fill, cancel, reject, create),
         )
 
-        return OandaOrder(
-            id=order.id,
+        mapped_order = order.evolve(
             status=status,
             broker_order_id=broker_order_id,
-            instrument=order.instrument,
-            side=order.side,
-            units=order.units,
-            order_type=order.order_type,
-            price=order.price,
             filled_units=filled_units,
             average_fill_price=average_fill_price,
             reason=reason,
-            related_transaction_ids=tuple(payload.get(body, "relatedTransactionIDs", ()) or ()),
-            last_transaction_id=payload.get(body, "lastTransactionID"),
             metadata=reason.details,
         )
+        return order_to_core(
+            OandaOrder(
+                order=mapped_order,
+                related_transaction_ids=tuple(payload.get(body, "relatedTransactionIDs", ()) or ()),
+                last_transaction_id=payload.get(body, "lastTransactionID"),
+            )
+        )
 
-    def metadata_from_order_response(self, response: Any) -> Metadata:
+    def metadata_from_order_response(
+        self, response: om.OandaResponse[om.OrderResponse]
+    ) -> Metadata:
         """Return raw order response metadata for read-only order endpoints."""
         return payload.metadata(payload.body(response))
 
     def order_from_position_close_response(
         self,
-        response: Any,
+        response: om.OandaResponse[om.PositionCloseResponse],
         *,
         position: Position,
         side: PositionSide,
         requested_units: Decimal,
-    ) -> OandaOrder:
+    ) -> Order:
         """Convert a close-position response into a normalized OANDA order."""
         body = payload.body(response)
         fill = payload.first(body, "longOrderFillTransaction", "shortOrderFillTransaction")
@@ -134,7 +143,7 @@ class OandaOrderMapper:
             code=self._reason_code(status=status, error_code=error_code),
             details=self._result_details(response, fill, cancel, reject, create),
         )
-        return OandaOrder(
+        mapped_order = Order(
             status=status,
             broker_order_id=self._broker_order_id(fill, create, cancel, reject),
             instrument=position.instrument,
@@ -145,9 +154,14 @@ class OandaOrderMapper:
             else Decimal("0"),
             average_fill_price=self._fill_price(fill, position.instrument),
             reason=reason,
-            related_transaction_ids=tuple(payload.get(body, "relatedTransactionIDs", ()) or ()),
-            last_transaction_id=payload.get(body, "lastTransactionID"),
             metadata=reason.details,
+        )
+        return order_to_core(
+            OandaOrder(
+                order=mapped_order,
+                related_transaction_ids=tuple(payload.get(body, "relatedTransactionIDs", ()) or ()),
+                last_transaction_id=payload.get(body, "lastTransactionID"),
+            )
         )
 
     @staticmethod

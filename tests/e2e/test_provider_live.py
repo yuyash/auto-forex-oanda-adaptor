@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from typing import cast
-
 from core import AccountId
 
-from oanda import OandaAccountManager, OandaBroker, OandaDataSource, OandaProvider, OandaSettings
+from oanda import OandaProvider, OandaSettings
 
 
 class TestProviderLive:
@@ -16,9 +14,9 @@ class TestProviderLive:
         summary = oanda_provider.accounts.get_account_summary(
             AccountId.of(oanda_settings.account_id)
         )
-        account_manager = cast(OandaAccountManager, oanda_provider.account_manager)
-        broker = cast(OandaBroker, oanda_provider.broker)
-        data_source = cast(OandaDataSource, oanda_provider.data)
+        account_manager = oanda_provider.account_manager
+        broker = oanda_provider.broker
+        data_source = oanda_provider.data
 
         assert account_manager.gateway is broker.gateway
         assert data_source.gateway is broker.gateway

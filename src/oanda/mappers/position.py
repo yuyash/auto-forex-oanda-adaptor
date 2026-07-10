@@ -8,12 +8,15 @@ from core import (
     CurrencyPair,
     Metadata,
     Money,
+    Position,
     PositionSide,
     PositionSideState,
 )
 
+import oanda.models as om
 import oanda.payload as payload
-from oanda.domain import OandaPosition
+from oanda.converters import position_to_core
+from oanda.snapshots import OandaPosition
 
 
 class OandaPositionMapper:
@@ -22,7 +25,9 @@ class OandaPositionMapper:
     def __init__(self, *, account_currency: Currency) -> None:
         self.account_currency = account_currency
 
-    def positions_from_response(self, response: object) -> tuple[OandaPosition, ...]:
+    def positions_from_response(
+        self, response: om.OandaResponse[om.PositionsResponse]
+    ) -> tuple[Position, ...]:
         """Convert an OANDA positions response into Core positions."""
         body = payload.body(response)
         positions = payload.get(body, "positions", ()) or ()
@@ -32,7 +37,7 @@ class OandaPositionMapper:
             if (position := self.position_from_oanda(item)) is not None
         )
 
-    def position_from_oanda(self, item: object) -> OandaPosition | None:
+    def position_from_oanda(self, item: object) -> Position | None:
         """Convert a net OANDA position into one Core two-sided position."""
         instrument = CurrencyPair.of(str(payload.get(item, "instrument")))
         long_state = self._position_side(instrument, PositionSide.LONG, payload.get(item, "long"))
@@ -41,25 +46,11 @@ class OandaPositionMapper:
         )
         if long_state is None and short_state is None:
             return None
-        return OandaPosition(
+        position = Position(
             instrument=instrument,
             long=long_state,
             short=short_state,
             unrealized_pl=self._unrealized_pl(item),
-            pl=payload.decimal(payload.get(item, "pl"))
-            if payload.get(item, "pl") is not None
-            else None,
-            resettable_pl=payload.decimal(payload.get(item, "resettablePL"))
-            if payload.get(item, "resettablePL") is not None
-            else None,
-            financing=payload.decimal(payload.get(item, "financing"))
-            if payload.get(item, "financing") is not None
-            else None,
-            margin_used=payload.decimal(payload.get(item, "marginUsed"))
-            if payload.get(item, "marginUsed") is not None
-            else None,
-            long_trade_ids=tuple(payload.get(payload.get(item, "long"), "tradeIDs", ()) or ()),
-            short_trade_ids=tuple(payload.get(payload.get(item, "short"), "tradeIDs", ()) or ()),
             metadata=Metadata.model_validate(
                 {
                     "oanda_instrument": payload.get(item, "instrument"),
@@ -67,6 +58,27 @@ class OandaPositionMapper:
                     "oanda_short_pl": payload.get(payload.get(item, "short"), "pl"),
                 }
             ),
+        )
+        return position_to_core(
+            OandaPosition(
+                position=position,
+                pl=payload.decimal(payload.get(item, "pl"))
+                if payload.get(item, "pl") is not None
+                else None,
+                resettable_pl=payload.decimal(payload.get(item, "resettablePL"))
+                if payload.get(item, "resettablePL") is not None
+                else None,
+                financing=payload.decimal(payload.get(item, "financing"))
+                if payload.get(item, "financing") is not None
+                else None,
+                margin_used=payload.decimal(payload.get(item, "marginUsed"))
+                if payload.get(item, "marginUsed") is not None
+                else None,
+                long_trade_ids=tuple(payload.get(payload.get(item, "long"), "tradeIDs", ()) or ()),
+                short_trade_ids=tuple(
+                    payload.get(payload.get(item, "short"), "tradeIDs", ()) or ()
+                ),
+            )
         )
 
     def _position_side(

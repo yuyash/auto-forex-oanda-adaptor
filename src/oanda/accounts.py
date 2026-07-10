@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any
+from typing import Any, Protocol
 
 from core import (
     Account,
@@ -23,13 +23,31 @@ from oanda.gateway import OandaGateway
 from oanda.mappers import OandaAccountMapper
 
 
+class OandaAccountGateway(Protocol):
+    """Gateway methods required by the account manager."""
+
+    def list_accounts(self) -> Any: ...
+    def get_account(self, account_id: str) -> Any: ...
+    def get_account_summary(self, account_id: str) -> Any: ...
+    def get_account_instruments(self, account_id: str) -> Any: ...
+    def configure_account(
+        self,
+        account_id: str,
+        request: Any = None,
+        *,
+        retry: bool = False,
+        **kwargs: Any,
+    ) -> Any: ...
+    def get_account_changes(self, account_id: str, request: Any = None) -> Any: ...
+
+
 class OandaAccountManager(AccountManager):
     """Account manager port implementation backed by OANDA v20."""
 
     def __init__(
         self,
         *,
-        gateway: OandaGateway,
+        gateway: OandaAccountGateway,
         mapper: OandaAccountMapper | None = None,
     ) -> None:
         self.gateway = gateway

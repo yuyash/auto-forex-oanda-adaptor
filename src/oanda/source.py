@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from core import Candle, CandleGranularity, CurrencyPair, DataSource, Tick
 
@@ -15,6 +15,24 @@ from oanda.gateway import OandaGateway
 from oanda.mappers import OandaInstrumentMapper, OandaMarketDataMapper
 
 
+class OandaPricingGateway(Protocol):
+    """Gateway methods required by the OANDA data source."""
+
+    opener: Any
+
+    def get_instrument_prices(self, instrument: str, **kwargs: Any) -> Any: ...
+    def get_account_prices(self, account_id: str, request: Any = None, **kwargs: Any) -> Any: ...
+    def get_account_candles(
+        self,
+        account_id: str,
+        instrument: str,
+        request: Any = None,
+        **kwargs: Any,
+    ) -> Any: ...
+    def stream_account_prices(self, account_id: str, request: Any = None, **kwargs: Any) -> Any: ...
+    def datetime_to_str(self, value: Any) -> str: ...
+
+
 class OandaDataSource(DataSource):
     """Market data source backed by OANDA v20."""
 
@@ -22,7 +40,7 @@ class OandaDataSource(DataSource):
         self,
         *,
         account_id: str,
-        gateway: OandaGateway,
+        gateway: OandaPricingGateway,
         mapper: OandaMarketDataMapper | None = None,
     ) -> None:
         self.account_id = account_id

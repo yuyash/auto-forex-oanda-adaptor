@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from typing import cast
-
 from core import CurrencyPair
 
-from oanda import OandaBroker, OandaProvider, OandaSettings
+from oanda import OandaProvider, OandaSettings
 from oanda.models import OandaStreamResponse
 
 
@@ -60,7 +58,7 @@ class TestBrokerLiveReadonly:
         oanda_provider: OandaProvider,
         oanda_settings: OandaSettings,
     ) -> None:
-        broker = cast(OandaBroker, oanda_provider.broker)
+        broker = oanda_provider.broker
         response = broker.gateway.stream_transactions(oanda_settings.account_id)
         try:
             assert response.status == 200

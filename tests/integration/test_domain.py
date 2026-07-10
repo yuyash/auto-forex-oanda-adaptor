@@ -12,9 +12,9 @@ from oanda.domain import (
 
 
 class TestDomain:
-    def test_domain_models_remain_core_model_subclasses(self) -> None:
-        assert issubclass(OandaAccount, Account)
-        assert issubclass(OandaOrder, Order)
-        assert issubclass(OandaPosition, Position)
-        assert issubclass(OandaTrade, Trade)
-        assert issubclass(OandaTransaction, Transaction)
+    def test_domain_models_compose_core_models_without_inheriting_them(self) -> None:
+        assert not issubclass(OandaAccount, Account)
+        assert not issubclass(OandaOrder, Order)
+        assert not issubclass(OandaPosition, Position)
+        assert not issubclass(OandaTrade, Trade)
+        assert not issubclass(OandaTransaction, Transaction)

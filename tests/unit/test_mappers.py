@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import cast
 
 from core import (
     CandleGranularity,
@@ -15,6 +16,7 @@ from core import (
     PositionSide,
 )
 
+import oanda.models as om
 from oanda.mappers import (
     OandaAccountMapper,
     OandaInstrumentMapper,
@@ -38,27 +40,30 @@ class TestMappers:
         account = OandaAccountMapper.account_from_properties(
             SimpleNamespace(id="001", alias="primary", mt4AccountID=123, tags=("demo",))
         )
-        response = FakeResponse(
-            200,
-            {
-                "account": {
-                    "id": "001",
-                    "currency": "USD",
-                    "alias": "primary",
-                    "balance": "1000.00",
-                    "NAV": "1001.00",
-                    "marginUsed": "10.00",
-                    "marginAvailable": "991.00",
-                    "marginRate": "0.02",
-                    "createdTime": "2026-01-01T00:00:00.000000000Z",
+        response = cast(
+            om.OandaResponse[om.AccountSummaryResponse],
+            FakeResponse(
+                200,
+                {
+                    "account": {
+                        "id": "001",
+                        "currency": "USD",
+                        "alias": "primary",
+                        "balance": "1000.00",
+                        "NAV": "1001.00",
+                        "marginUsed": "10.00",
+                        "marginAvailable": "991.00",
+                        "marginRate": "0.02",
+                        "createdTime": "2026-01-01T00:00:00.000000000Z",
+                    },
+                    "lastTransactionID": "10",
                 },
-                "lastTransactionID": "10",
-            },
+            ),
         )
         summary = OandaAccountMapper.summary_from_response(response)
 
         assert account.id.value == "001"
-        assert account.mt4_account_id == 123
+        assert account.provider is not None
         assert summary.balance == Money.of("1000.00", "USD")
         assert OandaAccountMapper.account_currency_from_response(response).code == "USD"
 
@@ -69,19 +74,22 @@ class TestMappers:
             units=Decimal("1000"),
             order_type=OrderType.MARKET,
         )
-        response = FakeResponse(
-            201,
-            {
-                "orderCreateTransaction": SimpleNamespace(id="100"),
-                "orderFillTransaction": SimpleNamespace(
-                    id="101",
-                    orderID="100",
-                    units="-1000",
-                    price="150.12",
-                ),
-                "lastTransactionID": "101",
-                "relatedTransactionIDs": ("100", "101"),
-            },
+        response = cast(
+            om.OandaResponse[om.OrderTransactionResponse],
+            FakeResponse(
+                201,
+                {
+                    "orderCreateTransaction": SimpleNamespace(id="100"),
+                    "orderFillTransaction": SimpleNamespace(
+                        id="101",
+                        orderID="100",
+                        units="-1000",
+                        price="150.12",
+                    ),
+                    "lastTransactionID": "101",
+                    "relatedTransactionIDs": ("100", "101"),
+                },
+            ),
         )
         mapper = OandaOrderMapper()
 
@@ -94,54 +102,63 @@ class TestMappers:
         assert mapped.average_fill_price == Money.of("150.12", "JPY")
 
     def test_position_trade_transaction_and_market_data_mappers(self) -> None:
-        position_response = FakeResponse(
-            200,
-            {
-                "positions": [
-                    SimpleNamespace(
-                        instrument="USD_JPY",
-                        long=SimpleNamespace(
-                            units="1000",
-                            averagePrice="150.10",
+        position_response = cast(
+            om.OandaResponse[om.PositionsResponse],
+            FakeResponse(
+                200,
+                {
+                    "positions": [
+                        SimpleNamespace(
+                            instrument="USD_JPY",
+                            long=SimpleNamespace(
+                                units="1000",
+                                averagePrice="150.10",
+                                unrealizedPL="12.50",
+                            ),
+                            short=SimpleNamespace(units="0"),
+                        )
+                    ]
+                },
+            ),
+        )
+        trade_response = cast(
+            om.OandaResponse[om.TradesResponse],
+            FakeResponse(
+                200,
+                {
+                    "trades": [
+                        SimpleNamespace(
+                            id="200",
+                            instrument="USD_JPY",
+                            currentUnits="1000",
+                            initialUnits="1000",
+                            price="150.10",
+                            openTime="2026-01-01T00:00:00.000000000Z",
+                            state="OPEN",
                             unrealizedPL="12.50",
-                        ),
-                        short=SimpleNamespace(units="0"),
-                    )
-                ]
-            },
+                            realizedPL="0.00",
+                        )
+                    ]
+                },
+            ),
         )
-        trade_response = FakeResponse(
-            200,
-            {
-                "trades": [
-                    SimpleNamespace(
-                        id="200",
-                        instrument="USD_JPY",
-                        currentUnits="1000",
-                        initialUnits="1000",
-                        price="150.10",
-                        openTime="2026-01-01T00:00:00.000000000Z",
-                        state="OPEN",
-                        unrealizedPL="12.50",
-                        realizedPL="0.00",
-                    )
-                ]
-            },
-        )
-        transaction_response = FakeResponse(
-            200,
-            {
-                "transactions": [
-                    SimpleNamespace(
-                        id="300",
-                        accountID="001",
-                        type="ORDER_FILL",
-                        instrument="USD_JPY",
-                        orderID="100",
-                        pl="1.25",
-                    )
-                ]
-            },
+        transaction_response = cast(
+            om.OandaResponse[om.TransactionsResponse],
+            FakeResponse(
+                200,
+                {
+                    "transactions": [
+                        SimpleNamespace(
+                            id="300",
+                            accountID="001",
+                            type="ORDER_FILL",
+                            instrument="USD_JPY",
+                            orderID="100",
+                            pl="1.25",
+                        )
+                    ]
+                },
+            ),
         )
         price_response = FakeResponse(200, {"prices": [price_namespace()]})
         candle_response = FakeResponse(200, {"candles": [candle_namespace()]})
@@ -174,25 +191,28 @@ class TestMappers:
         assert candles[0].close == Money.of("150.10", "JPY")
 
     def test_position_mapper_keeps_oanda_long_and_short_sides(self) -> None:
-        response = FakeResponse(
-            200,
-            {
-                "positions": [
-                    SimpleNamespace(
-                        instrument="USD_JPY",
-                        long=SimpleNamespace(
-                            units="1000",
-                            averagePrice="150.10",
-                            unrealizedPL="12.50",
-                        ),
-                        short=SimpleNamespace(
-                            units="-500",
-                            averagePrice="150.20",
-                            unrealizedPL="-3.25",
-                        ),
-                    )
-                ]
-            },
+        response = cast(
+            om.OandaResponse[om.PositionsResponse],
+            FakeResponse(
+                200,
+                {
+                    "positions": [
+                        SimpleNamespace(
+                            instrument="USD_JPY",
+                            long=SimpleNamespace(
+                                units="1000",
+                                averagePrice="150.10",
+                                unrealizedPL="12.50",
+                            ),
+                            short=SimpleNamespace(
+                                units="-500",
+                                averagePrice="150.20",
+                                unrealizedPL="-3.25",
+                            ),
+                        )
+                    ]
+                },
+            ),
         )
 
         positions = OandaPositionMapper(

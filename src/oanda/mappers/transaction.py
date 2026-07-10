@@ -9,10 +9,13 @@ from core import (
     Currency,
     CurrencyPair,
     Money,
+    Transaction,
 )
 
+import oanda.models as om
 import oanda.payload as payload
-from oanda.domain import OandaTransaction
+from oanda.converters import transaction_to_core
+from oanda.snapshots import OandaTransaction
 
 
 class OandaTransactionMapper:
@@ -21,22 +24,28 @@ class OandaTransactionMapper:
     def __init__(self, *, account_currency: Currency) -> None:
         self.account_currency = account_currency
 
-    def transaction_from_response(self, response: object) -> OandaTransaction:
+    def transaction_from_response(
+        self,
+        response: om.OandaResponse[om.TransactionResponse],
+    ) -> Transaction:
         """Convert an OANDA transaction response into one Core transaction."""
         return self.transaction_from_oanda(payload.get(payload.body(response), "transaction"))
 
-    def transactions_from_response(self, response: object) -> tuple[OandaTransaction, ...]:
+    def transactions_from_response(
+        self,
+        response: om.OandaResponse[om.TransactionsResponse],
+    ) -> tuple[Transaction, ...]:
         """Convert an OANDA transactions response into Core transactions."""
         transactions = payload.get(payload.body(response), "transactions", ()) or ()
         return tuple(self.transaction_from_oanda(item) for item in transactions)
 
-    def transaction_from_oanda(self, item: object) -> OandaTransaction:
+    def transaction_from_oanda(self, item: object) -> Transaction:
         """Convert one OANDA transaction into a Core transaction."""
         instrument = payload.get(item, "instrument")
         account_id = payload.get(item, "accountID")
         order_id = payload.get(item, "orderID")
         amount = payload.first(item, "amount", "pl", "financing", "commission")
-        return OandaTransaction(
+        transaction = Transaction(
             id=BrokerTransactionId.of(str(payload.get(item, "id"))),
             account_id=AccountId.of(str(account_id)) if account_id is not None else None,
             time=payload.parse_time(payload.get(item, "time"))
@@ -46,11 +55,16 @@ class OandaTransactionMapper:
             instrument=CurrencyPair.of(str(instrument)) if instrument is not None else None,
             order_id=BrokerOrderId.of(str(order_id)) if order_id is not None else None,
             amount=Money.of(amount, self.account_currency) if amount is not None else None,
-            user_id=payload.get(item, "userID"),
-            batch_id=payload.get(item, "batchID"),
-            request_id=payload.get(item, "requestID"),
-            reason=payload.get(item, "reason"),
-            reject_reason=payload.get(item, "rejectReason"),
-            related_transaction_ids=tuple(payload.get(item, "relatedTransactionIDs", ()) or ()),
             metadata=payload.metadata(item),
+        )
+        return transaction_to_core(
+            OandaTransaction(
+                transaction=transaction,
+                user_id=payload.get(item, "userID"),
+                batch_id=payload.get(item, "batchID"),
+                request_id=payload.get(item, "requestID"),
+                reason=payload.get(item, "reason"),
+                reject_reason=payload.get(item, "rejectReason"),
+                related_transaction_ids=tuple(payload.get(item, "relatedTransactionIDs", ()) or ()),
+            )
         )
