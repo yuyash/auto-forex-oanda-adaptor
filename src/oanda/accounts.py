@@ -15,12 +15,12 @@ from core import (
 )
 
 import oanda.models as om
-import oanda.payload as payload
 from oanda.config import OandaSettings
 from oanda.constants import OANDA_PROVIDER
 from oanda.errors import ensure_success
 from oanda.gateway import OandaGateway
 from oanda.mappers import OandaAccountMapper
+from oanda.payload import OandaPayload as payload
 
 
 class OandaAccountGateway(Protocol):

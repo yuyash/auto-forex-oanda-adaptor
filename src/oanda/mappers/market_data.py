@@ -6,7 +6,7 @@ from collections.abc import Iterable
 
 from core import Candle, CandleGranularity, CurrencyPair, Metadata, Money, Tick
 
-import oanda.payload as payload
+from oanda.payload import OandaPayload as payload
 
 
 class OandaMarketDataMapper:

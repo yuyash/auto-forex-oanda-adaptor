@@ -20,9 +20,9 @@ from core import (
 )
 
 import oanda.models as om
-import oanda.payload as payload
 from oanda.errors import ensure_success, error_from_response
 from oanda.mappers.instrument import OandaInstrumentMapper
+from oanda.payload import OandaPayload as payload
 
 AccountCurrencyProvider = Callable[[], Currency]
 MapperFactory = Callable[..., Any]

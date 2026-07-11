@@ -15,7 +15,7 @@ from core import (
 )
 
 import oanda.models as om
-import oanda.payload as payload
+from oanda.payload import OandaPayload as payload
 from oanda.snapshots import OandaPosition
 
 

@@ -11,13 +11,6 @@ _CREATED = (201,)
 _ORDER_REJECTED = (400, 404)
 
 
-def _tuple_field(values: dict[str, Any], key: str) -> dict[str, Any]:
-    value = values.get(key)
-    if isinstance(value, str):
-        return {**values, key: (value,)}
-    return values
-
-
 class OandaAccountsApi:
     """OANDA account endpoints."""
 
@@ -491,7 +484,7 @@ class OandaPricingApi:
         query = (
             request
             if request is not None
-            else om.PricingRequest.model_validate(_tuple_field(kwargs, "instruments"))
+            else om.PricingRequest.model_validate(self._tuple_field(kwargs, "instruments"))
         )
         return self._transport._request(
             "GET", f"/v3/accounts/{account_id}/pricing", om.PricingResponse, query=query
@@ -507,7 +500,7 @@ class OandaPricingApi:
         query = (
             request
             if request is not None
-            else om.PricingStreamRequest.model_validate(_tuple_field(kwargs, "instruments"))
+            else om.PricingStreamRequest.model_validate(self._tuple_field(kwargs, "instruments"))
         )
         return self._transport._stream(
             "GET",
@@ -531,6 +524,13 @@ class OandaPricingApi:
             om.CandlestickResponse,
             query=query,
         )
+
+    @staticmethod
+    def _tuple_field(values: dict[str, Any], key: str) -> dict[str, Any]:
+        value = values.get(key)
+        if isinstance(value, str):
+            return {**values, key: (value,)}
+        return values
 
     def get_instrument_candles(
         self,

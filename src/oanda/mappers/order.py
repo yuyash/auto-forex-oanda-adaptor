@@ -22,8 +22,8 @@ from core import (
 )
 
 import oanda.models as om
-import oanda.payload as payload
 from oanda.mappers.instrument import OandaInstrumentMapper
+from oanda.payload import OandaPayload as payload
 from oanda.snapshots import OandaOrder
 
 type OandaOrderMutationResponse = om.OandaResponse[om.OrderTransactionResponse]

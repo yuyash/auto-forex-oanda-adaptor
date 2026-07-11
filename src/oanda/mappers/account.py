@@ -5,7 +5,7 @@ from __future__ import annotations
 from core import Account, AccountId, AccountSummary, Currency, MarginRate, Money
 
 import oanda.models as om
-import oanda.payload as payload
+from oanda.payload import OandaPayload as payload
 from oanda.snapshots import OandaAccount, OandaAccountSummary
 
 
