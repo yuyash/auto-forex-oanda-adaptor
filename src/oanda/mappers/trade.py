@@ -6,7 +6,6 @@ from core import BrokerTradeId, Currency, CurrencyPair, Money, PositionSide, Tra
 
 import oanda.models as om
 import oanda.payload as payload
-from oanda.converters import trade_to_core
 from oanda.snapshots import OandaTrade
 
 
@@ -58,31 +57,29 @@ class OandaTradeMapper:
             else None,
             metadata=payload.metadata(item),
         )
-        return trade_to_core(
-            OandaTrade(
-                trade=trade,
-                client_trade_id=payload.get(payload.get(item, "clientExtensions"), "id"),
-                initial_units=Units.of(abs(payload.decimal(payload.get(item, "initialUnits"))))
-                if payload.get(item, "initialUnits") is not None
-                else None,
-                initial_margin_required=Money.of(
-                    payload.get(item, "initialMarginRequired"),
-                    self.account_currency,
-                )
-                if payload.get(item, "initialMarginRequired") is not None
-                else None,
-                realized_pl_value=Money.of(realized_pl, self.account_currency)
-                if realized_pl is not None
-                else None,
-                financing=Money.of(payload.get(item, "financing"), self.account_currency)
-                if payload.get(item, "financing") is not None
-                else None,
-                dividend_adjustment=Money.of(
-                    payload.get(item, "dividendAdjustment"),
-                    self.account_currency,
-                )
-                if payload.get(item, "dividendAdjustment") is not None
-                else None,
-                close_transaction_ids=tuple(payload.get(item, "closingTransactionIDs", ()) or ()),
+        return OandaTrade(
+            trade=trade,
+            client_trade_id=payload.get(payload.get(item, "clientExtensions"), "id"),
+            initial_units=Units.of(abs(payload.decimal(payload.get(item, "initialUnits"))))
+            if payload.get(item, "initialUnits") is not None
+            else None,
+            initial_margin_required=Money.of(
+                payload.get(item, "initialMarginRequired"),
+                self.account_currency,
             )
-        )
+            if payload.get(item, "initialMarginRequired") is not None
+            else None,
+            realized_pl_value=Money.of(realized_pl, self.account_currency)
+            if realized_pl is not None
+            else None,
+            financing=Money.of(payload.get(item, "financing"), self.account_currency)
+            if payload.get(item, "financing") is not None
+            else None,
+            dividend_adjustment=Money.of(
+                payload.get(item, "dividendAdjustment"),
+                self.account_currency,
+            )
+            if payload.get(item, "dividendAdjustment") is not None
+            else None,
+            close_transaction_ids=tuple(payload.get(item, "closingTransactionIDs", ()) or ()),
+        ).trade

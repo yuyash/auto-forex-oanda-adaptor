@@ -6,14 +6,6 @@ from oanda.accounts import OandaAccountManager
 from oanda.broker import OandaBroker
 from oanda.config import OandaEnvironment, OandaSettings
 from oanda.constants import OANDA_PROVIDER
-from oanda.converters import (
-    account_summary_to_core,
-    account_to_core,
-    order_to_core,
-    position_to_core,
-    trade_to_core,
-    transaction_to_core,
-)
 from oanda.errors import (
     OandaAdapterError,
     OandaApiError,
@@ -86,12 +78,6 @@ __all__ = [
     "OandaTransaction",
     "OandaTransportError",
     "__version__",
-    "account_summary_to_core",
-    "account_to_core",
-    "order_to_core",
-    "position_to_core",
-    "trade_to_core",
-    "transaction_to_core",
 ]
 
 __version__ = version("oanda")

@@ -14,14 +14,6 @@ from core import (
 )
 
 from oanda import OANDA_PROVIDER
-from oanda.converters import (
-    account_summary_to_core,
-    account_to_core,
-    order_to_core,
-    position_to_core,
-    trade_to_core,
-    transaction_to_core,
-)
 from oanda.snapshots import (
     OandaAccount,
     OandaAccountSummary,
@@ -47,7 +39,7 @@ class TestDomain:
         assert account.provider == OANDA_PROVIDER
         assert account.mt4_account_id == 123
         assert account.tags == ("demo",)
-        assert isinstance(account_to_core(account), Account)
+        assert isinstance(account.account, Account)
 
     def test_oanda_account_summary_accepts_oanda_specific_fields(self) -> None:
         summary = OandaAccountSummary.model_validate(
@@ -64,7 +56,7 @@ class TestDomain:
         assert summary.balance == Money.of("1000.00", "USD")
         assert summary.financing_mode == "NO_FINANCING"
         assert summary.withdrawal_limit == Money.of("900.00", "USD")
-        assert isinstance(account_summary_to_core(summary), AccountSummary)
+        assert isinstance(summary.summary, AccountSummary)
 
     def test_oanda_order_position_trade_and_transaction_compose_core_models(self) -> None:
         order = OandaOrder.model_validate(
@@ -108,13 +100,13 @@ class TestDomain:
 
         assert order.side == OrderSide.BUY
         assert order.client_order_id == "client-1"
-        assert isinstance(order_to_core(order), Order)
+        assert isinstance(order.order, Order)
         assert position.long is not None
         assert position.long.side == PositionSide.LONG
         assert position.pl == Money.of("1.25", "JPY")
-        assert isinstance(position_to_core(position), Position)
+        assert isinstance(position.position, Position)
         assert trade.initial_units == Units("1000")
         assert trade.financing == Money.of("0.10", "JPY")
-        assert isinstance(trade_to_core(trade), Trade)
+        assert isinstance(trade.trade, Trade)
         assert transaction.reason == "MARKET_ORDER"
-        assert isinstance(transaction_to_core(transaction), Transaction)
+        assert isinstance(transaction.transaction, Transaction)

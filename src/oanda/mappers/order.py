@@ -23,7 +23,6 @@ from core import (
 
 import oanda.models as om
 import oanda.payload as payload
-from oanda.converters import order_to_core
 from oanda.mappers.instrument import OandaInstrumentMapper
 from oanda.snapshots import OandaOrder
 
@@ -104,13 +103,11 @@ class OandaOrderMapper:
             reason=reason,
             metadata=reason.details,
         )
-        return order_to_core(
-            OandaOrder(
-                order=mapped_order,
-                related_transaction_ids=tuple(payload.get(body, "relatedTransactionIDs", ()) or ()),
-                last_transaction_id=payload.get(body, "lastTransactionID"),
-            )
-        )
+        return OandaOrder(
+            order=mapped_order,
+            related_transaction_ids=tuple(payload.get(body, "relatedTransactionIDs", ()) or ()),
+            last_transaction_id=payload.get(body, "lastTransactionID"),
+        ).order
 
     def metadata_from_order_response(
         self, response: om.OandaResponse[om.OrderResponse]
@@ -159,13 +156,11 @@ class OandaOrderMapper:
             reason=reason,
             metadata=reason.details,
         )
-        return order_to_core(
-            OandaOrder(
-                order=mapped_order,
-                related_transaction_ids=tuple(payload.get(body, "relatedTransactionIDs", ()) or ()),
-                last_transaction_id=payload.get(body, "lastTransactionID"),
-            )
-        )
+        return OandaOrder(
+            order=mapped_order,
+            related_transaction_ids=tuple(payload.get(body, "relatedTransactionIDs", ()) or ()),
+            last_transaction_id=payload.get(body, "lastTransactionID"),
+        ).order
 
     @staticmethod
     def _signed_units(order: Order) -> Decimal:

@@ -16,7 +16,6 @@ from core import (
 
 import oanda.models as om
 import oanda.payload as payload
-from oanda.converters import position_to_core
 from oanda.snapshots import OandaPosition
 
 
@@ -60,27 +59,23 @@ class OandaPositionMapper:
                 }
             ),
         )
-        return position_to_core(
-            OandaPosition(
-                position=position,
-                pl=Money.of(payload.get(item, "pl"), self.account_currency)
-                if payload.get(item, "pl") is not None
-                else None,
-                resettable_pl=Money.of(payload.get(item, "resettablePL"), self.account_currency)
-                if payload.get(item, "resettablePL") is not None
-                else None,
-                financing=Money.of(payload.get(item, "financing"), self.account_currency)
-                if payload.get(item, "financing") is not None
-                else None,
-                margin_used=Money.of(payload.get(item, "marginUsed"), self.account_currency)
-                if payload.get(item, "marginUsed") is not None
-                else None,
-                long_trade_ids=tuple(payload.get(payload.get(item, "long"), "tradeIDs", ()) or ()),
-                short_trade_ids=tuple(
-                    payload.get(payload.get(item, "short"), "tradeIDs", ()) or ()
-                ),
-            )
-        )
+        return OandaPosition(
+            position=position,
+            pl=Money.of(payload.get(item, "pl"), self.account_currency)
+            if payload.get(item, "pl") is not None
+            else None,
+            resettable_pl=Money.of(payload.get(item, "resettablePL"), self.account_currency)
+            if payload.get(item, "resettablePL") is not None
+            else None,
+            financing=Money.of(payload.get(item, "financing"), self.account_currency)
+            if payload.get(item, "financing") is not None
+            else None,
+            margin_used=Money.of(payload.get(item, "marginUsed"), self.account_currency)
+            if payload.get(item, "marginUsed") is not None
+            else None,
+            long_trade_ids=tuple(payload.get(payload.get(item, "long"), "tradeIDs", ()) or ()),
+            short_trade_ids=tuple(payload.get(payload.get(item, "short"), "tradeIDs", ()) or ()),
+        ).position
 
     def _position_side(
         self,

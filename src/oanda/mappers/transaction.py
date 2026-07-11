@@ -14,7 +14,6 @@ from core import (
 
 import oanda.models as om
 import oanda.payload as payload
-from oanda.converters import transaction_to_core
 from oanda.snapshots import OandaTransaction
 
 
@@ -57,14 +56,12 @@ class OandaTransactionMapper:
             amount=Money.of(amount, self.account_currency) if amount is not None else None,
             metadata=payload.metadata(item),
         )
-        return transaction_to_core(
-            OandaTransaction(
-                transaction=transaction,
-                user_id=payload.get(item, "userID"),
-                batch_id=payload.get(item, "batchID"),
-                request_id=payload.get(item, "requestID"),
-                reason=payload.get(item, "reason"),
-                reject_reason=payload.get(item, "rejectReason"),
-                related_transaction_ids=tuple(payload.get(item, "relatedTransactionIDs", ()) or ()),
-            )
-        )
+        return OandaTransaction(
+            transaction=transaction,
+            user_id=payload.get(item, "userID"),
+            batch_id=payload.get(item, "batchID"),
+            request_id=payload.get(item, "requestID"),
+            reason=payload.get(item, "reason"),
+            reject_reason=payload.get(item, "rejectReason"),
+            related_transaction_ids=tuple(payload.get(item, "relatedTransactionIDs", ()) or ()),
+        ).transaction
