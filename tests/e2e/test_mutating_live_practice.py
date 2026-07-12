@@ -142,7 +142,7 @@ class TestMutatingLivePractice:
             )
             assert dependent_orders
 
-            closed = mutating_oanda_provider.broker.close_trade(trade_id)
+            closed = mutating_oanda_provider.broker.close_trade(fetched_trade)
             assert closed
             trade_id = None
         finally:
@@ -237,7 +237,7 @@ def _close_trade_if_present(provider: OandaProvider, trade_id: str | None) -> No
     if trade_id is None:
         return
     try:
-        provider.broker.close_trade(trade_id)
+        provider.broker.close_trade(provider.broker.get_trade(trade_id))
     except OandaApiError:
         return
 

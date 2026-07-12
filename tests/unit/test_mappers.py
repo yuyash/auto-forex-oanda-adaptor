@@ -8,6 +8,7 @@ from core import (
     CandleGranularity,
     Currency,
     CurrencyPair,
+    Metadata,
     Money,
     Order,
     OrderSide,
@@ -98,9 +99,62 @@ class TestMappers:
         mapped = mapper.order_from_order_response(response, order)
 
         assert kwargs["units"] == "-1000"
+        assert kwargs["clientExtensions"]["id"] == str(order.id)
+        assert kwargs["tradeClientExtensions"]["id"] == str(order.id)
         assert mapped.status == OrderStatus.FILLED
         assert mapped.filled_units == Units("1000")
         assert mapped.average_fill_price == Money.of("150.12", "JPY")
+
+    def test_order_mapper_writes_logical_trade_id_to_trade_client_extensions(self) -> None:
+        order = Order(
+            instrument=USD_JPY,
+            side=OrderSide.BUY,
+            units=Units("1000"),
+            price=Money.of("150.12", "JPY"),
+            metadata=Metadata.of(logical_trade_id="C1L1R0B1"),
+        )
+        mapper = OandaOrderMapper()
+
+        kwargs = mapper.order_kwargs(order)
+
+        assert kwargs["clientExtensions"]["id"] == str(order.id)
+        assert kwargs["tradeClientExtensions"]["id"] == "C1L1R0B1"
+
+    def test_order_mapper_records_opened_and_closed_broker_trade_ids(self) -> None:
+        order = Order(
+            instrument=USD_JPY,
+            side=OrderSide.BUY,
+            units=Units("1000"),
+            order_type=OrderType.MARKET,
+        )
+        response = cast(
+            om.OandaResponse[om.OrderTransactionResponse],
+            FakeResponse(
+                201,
+                {
+                    "orderCreateTransaction": SimpleNamespace(id="100"),
+                    "orderFillTransaction": SimpleNamespace(
+                        id="101",
+                        orderID="100",
+                        units="1000",
+                        price="150.12",
+                        tradeOpened=SimpleNamespace(tradeID="200"),
+                        tradesClosed=(
+                            SimpleNamespace(tradeID="201"),
+                            SimpleNamespace(id="202"),
+                        ),
+                    ),
+                    "lastTransactionID": "101",
+                    "relatedTransactionIDs": ("100", "101"),
+                },
+            ),
+        )
+        mapper = OandaOrderMapper()
+
+        mapped = mapper.order_from_order_response(response, order)
+
+        assert mapped.metadata["broker_trade_id"] == "200"
+        assert mapped.metadata["closed_broker_trade_ids"] == ("201", "202")
 
     def test_position_trade_transaction_and_market_data_mappers(self) -> None:
         position_response = cast(

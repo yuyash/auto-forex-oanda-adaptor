@@ -36,13 +36,17 @@ class OandaOrderMapper:
     def order_kwargs(self, order: Order) -> dict[str, Any]:
         """Convert a Core order into OANDA order kwargs."""
         units = self._signed_units(order)
-        client_id = str(order.metadata.get("logical_trade_id") or order.id)
+        logical_trade_id = str(order.metadata.get("logical_trade_id") or order.id)
         base: dict[str, Any] = {
             "instrument": OandaInstrumentMapper.to_oanda(order.instrument),
             "units": str(units),
             "positionFill": "DEFAULT",
             "clientExtensions": {
-                "id": client_id,
+                "id": str(order.id),
+                "tag": "auto-forex",
+            },
+            "tradeClientExtensions": {
+                "id": logical_trade_id,
                 "tag": "auto-forex",
             },
         }
@@ -304,4 +308,25 @@ class OandaOrderMapper:
             value = payload.get(transaction, "id")
             if value is not None:
                 details[name] = value
+        opened_trade_id = OandaOrderMapper._opened_trade_id(fill)
+        if opened_trade_id:
+            details["broker_trade_id"] = opened_trade_id
+        closed_trade_ids = OandaOrderMapper._closed_trade_ids(fill)
+        if closed_trade_ids:
+            details["closed_broker_trade_ids"] = closed_trade_ids
         return Metadata.model_validate(details)
+
+    @staticmethod
+    def _opened_trade_id(fill: Any) -> str:
+        trade_opened = payload.get(fill, "tradeOpened")
+        value = payload.get(trade_opened, "tradeID") or payload.get(trade_opened, "id")
+        return "" if value is None else str(value)
+
+    @staticmethod
+    def _closed_trade_ids(fill: Any) -> tuple[str, ...]:
+        trades_closed = payload.get(fill, "tradesClosed", ()) or ()
+        return tuple(
+            str(value)
+            for item in trades_closed
+            if (value := payload.get(item, "tradeID") or payload.get(item, "id")) is not None
+        )
