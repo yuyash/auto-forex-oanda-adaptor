@@ -10,8 +10,8 @@ from tests.support import FakeResponse, candle_namespace, price_namespace
 
 class IntegrationGateway:
     def __init__(self) -> None:
-        self.market_orders: list[dict[str, Any]] = []
-        self.close_position_calls: list[tuple[str, dict[str, Any]]] = []
+        self.order_requests: list[om.CreateOrderRequest] = []
+        self.close_position_calls: list[tuple[str, om.ClosePositionRequest]] = []
         self.configure_account_calls: list[om.ConfigureAccountRequest] = []
         self.opener = SimpleNamespace(close=lambda: None)
         self.accounts = self
@@ -87,9 +87,19 @@ class IntegrationGateway:
         _ = request
         return FakeResponse(200, {"lastTransactionID": "12", "state": {"NAV": "1001.00"}})
 
-    def create_market_order(self, account_id: str, **kwargs: Any) -> FakeResponse:
+    def create_order(
+        self,
+        account_id: str,
+        request: om.CreateOrderRequest,
+        **kwargs: Any,
+    ) -> FakeResponse:
         _ = account_id
-        self.market_orders.append(kwargs)
+        _ = kwargs
+        self.order_requests.append(request)
+        order = request.order
+        if not isinstance(order, om.MarketOrderRequest) or order.units is None:
+            msg = "integration fake supports market order requests with units"
+            raise ValueError(msg)
         return FakeResponse(
             201,
             {
@@ -97,7 +107,7 @@ class IntegrationGateway:
                 "orderFillTransaction": SimpleNamespace(
                     id="101",
                     orderID="100",
-                    units=kwargs["units"],
+                    units=str(order.units),
                     price="150.12",
                 ),
                 "lastTransactionID": "101",
@@ -125,9 +135,16 @@ class IntegrationGateway:
             },
         )
 
-    def close_position(self, account_id: str, instrument: str, **kwargs: Any) -> FakeResponse:
+    def close_position(
+        self,
+        account_id: str,
+        instrument: str,
+        request: om.ClosePositionRequest,
+        **kwargs: Any,
+    ) -> FakeResponse:
         _ = account_id
-        self.close_position_calls.append((instrument, kwargs))
+        _ = kwargs
+        self.close_position_calls.append((instrument, request))
         return FakeResponse(
             200,
             {

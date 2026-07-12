@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from typing import cast
+
 from core import CandleGranularity, CurrencyPair, Money
 
-from oanda.source import OandaDataSource
+from oanda.source import OandaDataSource, OandaPricingClient, OandaSession, OandaTimeFormatter
 from tests.integration.fakes import IntegrationGateway
 
 
@@ -11,9 +13,9 @@ class TestSource:
         gateway = IntegrationGateway()
         source = OandaDataSource(
             account_id="001",
-            pricing=gateway.pricing,
-            time_formatter=gateway.transport,
-            session=gateway.transport,
+            pricing=cast(OandaPricingClient, gateway.pricing),
+            time_formatter=cast(OandaTimeFormatter, gateway.transport),
+            session=cast(OandaSession, gateway.transport),
         )
 
         prices = tuple(source.prices(instruments=(CurrencyPair.of("USD_JPY"),)))

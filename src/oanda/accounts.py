@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Protocol
 
 from core import (
     Account,
@@ -26,19 +26,29 @@ from oanda.payload import OandaPayload as payload
 class OandaAccountClient(Protocol):
     """OANDA account endpoint methods required by the account manager."""
 
-    def list_accounts(self) -> Any: ...
-    def get_account(self, account_id: str) -> Any: ...
-    def get_account_summary(self, account_id: str) -> Any: ...
-    def get_account_instruments(self, account_id: str) -> Any: ...
+    def list_accounts(self) -> om.OandaResponse[om.AccountsResponse]: ...
+    def get_account(self, account_id: str) -> om.OandaResponse[om.AccountResponse]: ...
+    def get_account_summary(
+        self,
+        account_id: str,
+    ) -> om.OandaResponse[om.AccountSummaryResponse]: ...
+    def get_account_instruments(
+        self,
+        account_id: str,
+        request: om.AccountInstrumentsRequest | None = None,
+    ) -> om.OandaResponse[om.AccountInstrumentsResponse]: ...
     def configure_account(
         self,
         account_id: str,
-        request: Any = None,
+        request: om.ConfigureAccountRequest,
         *,
         retry: bool = False,
-        **kwargs: Any,
-    ) -> Any: ...
-    def get_account_changes(self, account_id: str, request: Any = None) -> Any: ...
+    ) -> om.OandaResponse[om.ConfigureAccountResponse]: ...
+    def get_account_changes(
+        self,
+        account_id: str,
+        request: om.AccountChangesRequest,
+    ) -> om.OandaResponse[om.AccountChangesResponse]: ...
 
 
 class OandaAccountManager(AccountManager):

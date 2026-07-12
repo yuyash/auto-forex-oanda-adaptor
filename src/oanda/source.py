@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import datetime
-from typing import Any, Protocol, cast
+from typing import Protocol, cast
 
 from core import Candle, CandleGranularity, CurrencyPair, DataSource, Tick
 
@@ -19,28 +19,48 @@ from oanda.payload import OandaPayload as payload
 class OandaPricingClient(Protocol):
     """OANDA pricing endpoint methods required by the data source."""
 
-    def get_instrument_prices(self, instrument: str, **kwargs: Any) -> Any: ...
-    def get_account_prices(self, account_id: str, request: Any = None, **kwargs: Any) -> Any: ...
+    def get_instrument_prices(
+        self,
+        instrument: str,
+        **kwargs: object,
+    ) -> om.OandaResponse[om.PricingResponse]: ...
+    def get_account_prices(
+        self,
+        account_id: str,
+        request: om.PricingRequest | None = None,
+        **kwargs: object,
+    ) -> om.OandaResponse[om.PricingResponse]: ...
     def get_account_candles(
         self,
         account_id: str,
         instrument: str,
-        request: Any = None,
-        **kwargs: Any,
-    ) -> Any: ...
-    def stream_account_prices(self, account_id: str, request: Any = None, **kwargs: Any) -> Any: ...
+        request: om.AccountCandlesRequest | None = None,
+        **kwargs: object,
+    ) -> om.OandaResponse[om.CandlestickResponse]: ...
+    def stream_account_prices(
+        self,
+        account_id: str,
+        request: om.PricingStreamRequest | None = None,
+        **kwargs: object,
+    ) -> om.OandaResponse[None]: ...
 
 
 class OandaTimeFormatter(Protocol):
     """Formats datetimes for OANDA query parameters."""
 
-    def datetime_to_str(self, value: Any) -> str: ...
+    def datetime_to_str(self, value: datetime) -> str: ...
+
+
+class OandaOpener(Protocol):
+    """Closable HTTP opener used by the OANDA transport."""
+
+    def close(self) -> None: ...
 
 
 class OandaSession(Protocol):
     """Closable OANDA session dependency."""
 
-    opener: Any
+    opener: OandaOpener
 
 
 class OandaDataSource(DataSource):
@@ -94,7 +114,7 @@ class OandaDataSource(DataSource):
                 ),
                 200,
             )
-        prices = cast(Iterable[Any], payload.get(response.body, "prices", ()) or ())
+        prices = cast(Iterable[object], payload.get(response.body, "prices", ()) or ())
         return self.mapper.ticks_from_prices(prices)
 
     def prices(
@@ -122,7 +142,7 @@ class OandaDataSource(DataSource):
             ),
             200,
         )
-        prices = cast(Iterable[Any], payload.get(response.body, "prices", ()) or ())
+        prices = cast(Iterable[object], payload.get(response.body, "prices", ()) or ())
         return self.mapper.ticks_from_prices(prices)
 
     def candles(

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from typing import cast
+
 from core import AccountId, CurrencyPair, MarginRate, Money
 
-from oanda.accounts import OandaAccountManager
+from oanda.accounts import OandaAccountClient, OandaAccountManager
 from tests.integration.fakes import IntegrationGateway
 
 
@@ -10,7 +12,7 @@ class TestAccounts:
     def test_account_manager_integrates_gateway_and_mappers_without_http(self) -> None:
         gateway = IntegrationGateway()
         account_id = AccountId.of("001")
-        manager = OandaAccountManager(accounts=gateway.accounts)
+        manager = OandaAccountManager(accounts=cast(OandaAccountClient, gateway.accounts))
 
         accounts = manager.list_accounts()
         summary = manager.get_account_summary(account_id)

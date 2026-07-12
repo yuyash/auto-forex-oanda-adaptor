@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -27,7 +28,7 @@ USD_JPY = CurrencyPair.of("USD_JPY")
 
 
 class TestBroker:
-    def test_broker_place_order_uses_order_mapper_and_market_gateway(self) -> None:
+    def test_broker_place_order_uses_order_mapper_and_orders_endpoint(self) -> None:
         gateway = Mock()
         order_mapper = Mock()
         order = Order(instrument=USD_JPY, side=OrderSide.BUY, units=Units("1000"))
@@ -35,16 +36,21 @@ class TestBroker:
         response = FakeResponse(201, {"orderFillTransaction": SimpleNamespace(id="100")})
         order_mapper.order_kwargs.return_value = {"units": "1000", "instrument": "USD_JPY"}
         order_mapper.order_from_order_response.return_value = result
-        gateway.orders.create_market_order.return_value = response
+        gateway.orders.create_order.return_value = response
         broker = OandaBroker(account_id="001", gateway=gateway, order_mapper=order_mapper)
 
         assert broker.place_order(order) == result
 
-        gateway.orders.create_market_order.assert_called_once_with(
+        gateway.orders.create_order.assert_called_once_with(
             "001",
+            om.CreateOrderRequest(
+                order=om.MarketOrderRequest(
+                    type=om.OrderType.MARKET,
+                    instrument="USD_JPY",
+                    units=Decimal("1000"),
+                )
+            ),
             retry=True,
-            units="1000",
-            instrument="USD_JPY",
         )
         order_mapper.order_from_order_response.assert_called_once_with(response, order)
 
@@ -89,8 +95,7 @@ class TestBroker:
         gateway.positions.close_position.assert_called_once_with(
             "001",
             "USD_JPY",
-            longUnits="250",
-            shortUnits="NONE",
+            om.ClosePositionRequest(longUnits="250", shortUnits="NONE"),
         )
 
     def test_broker_positions_uses_position_mapper(self, monkeypatch: pytest.MonkeyPatch) -> None:

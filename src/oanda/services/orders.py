@@ -80,17 +80,11 @@ class OandaOrderService:
 
     def place_order(self, order: Order) -> Order:
         """Place an order through OANDA."""
-        kwargs = self.order_mapper.order_kwargs(order)
-        if order.order_type == OrderType.MARKET:
-            response = self.orders.create_market_order(self.account_id, retry=True, **kwargs)
-        elif order.order_type == OrderType.LIMIT:
-            response = self.orders.create_limit_order(self.account_id, retry=True, **kwargs)
-        elif order.order_type == OrderType.STOP:
-            response = self.orders.create_stop_order(self.account_id, retry=True, **kwargs)
-        else:
-            msg = f"unsupported OANDA order type: {order.order_type}"
-            raise ValueError(msg)
-
+        response = self.orders.create_order(
+            self.account_id,
+            om.CreateOrderRequest(order=self.request_factory.request(order)),
+            retry=True,
+        )
         OandaMutationResponsePolicy.raise_for_unexpected(response)
         return self.order_mapper.order_from_order_response(response, order)
 
@@ -109,8 +103,7 @@ class OandaOrderService:
         response = self.positions.close_position(
             self.account_id,
             OandaInstrumentMapper.to_oanda(position.instrument),
-            longUnits=kwargs["longUnits"],
-            shortUnits=kwargs["shortUnits"],
+            om.ClosePositionRequest.model_validate(kwargs),
         )
         OandaMutationResponsePolicy.raise_for_unexpected(response)
         return self.order_mapper.order_from_position_close_response(

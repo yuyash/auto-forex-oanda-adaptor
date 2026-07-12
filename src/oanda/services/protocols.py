@@ -3,125 +3,150 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Protocol
+from datetime import datetime
+from typing import Protocol
 
 from core import Currency
 
+import oanda.models as om
+
 AccountCurrencyProvider = Callable[[], Currency]
-MapperFactory = Callable[..., Any]
+MapperFactory = Callable[..., object]
 
 
 class OandaOrderClient(Protocol):
     """OANDA order endpoint methods required by order services."""
 
-    def create_market_order(
-        self, account_id: str, *, retry: bool = False, **kwargs: Any
-    ) -> Any: ...
-    def create_limit_order(self, account_id: str, *, retry: bool = False, **kwargs: Any) -> Any: ...
-    def create_stop_order(self, account_id: str, *, retry: bool = False, **kwargs: Any) -> Any: ...
-    def list_orders(self, account_id: str, request: Any = None) -> Any: ...
-    def list_pending_orders(self, account_id: str) -> Any: ...
-    def get_order(self, account_id: str, order_specifier: str) -> Any: ...
+    def create_order(
+        self,
+        account_id: str,
+        request: om.CreateOrderRequest,
+        *,
+        retry: bool = False,
+    ) -> om.OandaResponse[om.OrderTransactionResponse]: ...
+    def list_orders(
+        self,
+        account_id: str,
+        request: om.OrdersRequest | None = None,
+    ) -> om.OandaResponse[om.OrdersResponse]: ...
+    def list_pending_orders(self, account_id: str) -> om.OandaResponse[om.OrdersResponse]: ...
+    def get_order(
+        self,
+        account_id: str,
+        order_specifier: str,
+    ) -> om.OandaResponse[om.OrderResponse]: ...
     def replace_order(
         self,
         account_id: str,
         order_specifier: str,
-        request: Any = None,
+        request: om.ReplaceOrderRequest,
         *,
         retry: bool = False,
-        **kwargs: Any,
-    ) -> Any: ...
+    ) -> om.OandaResponse[om.OrderTransactionResponse]: ...
     def cancel_order(
         self,
         account_id: str,
         order_specifier: str,
         *,
         retry: bool = False,
-    ) -> Any: ...
+    ) -> om.OandaResponse[om.OrderTransactionResponse]: ...
     def set_order_client_extensions(
         self,
         account_id: str,
         order_specifier: str,
-        request: Any = None,
+        request: om.SetOrderClientExtensionsRequest,
         *,
         retry: bool = False,
-        **kwargs: Any,
-    ) -> Any: ...
+    ) -> om.OandaResponse[om.OrderTransactionResponse]: ...
 
 
 class OandaPositionClient(Protocol):
     """OANDA position endpoint methods required by position services."""
 
-    def list_open_positions(self, account_id: str) -> Any: ...
-    def list_positions(self, account_id: str) -> Any: ...
-    def get_position(self, account_id: str, instrument: str) -> Any: ...
+    def list_open_positions(self, account_id: str) -> om.OandaResponse[om.PositionsResponse]: ...
+    def list_positions(self, account_id: str) -> om.OandaResponse[om.PositionsResponse]: ...
+    def get_position(
+        self,
+        account_id: str,
+        instrument: str,
+    ) -> om.OandaResponse[om.PositionResponse]: ...
     def close_position(
         self,
         account_id: str,
         instrument: str,
-        request: Any = None,
+        request: om.ClosePositionRequest,
         *,
         retry: bool = False,
-        **kwargs: Any,
-    ) -> Any: ...
+    ) -> om.OandaResponse[om.PositionCloseResponse]: ...
 
 
 class OandaTradeClient(Protocol):
     """OANDA trade endpoint methods required by trade services."""
 
-    def list_trades(self, account_id: str, request: Any = None) -> Any: ...
-    def list_open_trades(self, account_id: str) -> Any: ...
-    def get_trade(self, account_id: str, trade_specifier: str) -> Any: ...
+    def list_trades(
+        self,
+        account_id: str,
+        request: om.TradesRequest | None = None,
+    ) -> om.OandaResponse[om.TradesResponse]: ...
+    def list_open_trades(self, account_id: str) -> om.OandaResponse[om.TradesResponse]: ...
+    def get_trade(
+        self,
+        account_id: str,
+        trade_specifier: str,
+    ) -> om.OandaResponse[om.TradeResponse]: ...
     def close_trade(
         self,
         account_id: str,
         trade_specifier: str,
-        request: Any = None,
+        request: om.CloseTradeRequest | None = None,
         *,
         retry: bool = False,
-        **kwargs: Any,
-    ) -> Any: ...
+    ) -> om.OandaResponse[om.TradeTransactionResponse]: ...
     def set_trade_client_extensions(
         self,
         account_id: str,
         trade_specifier: str,
-        request: Any = None,
+        request: om.SetTradeClientExtensionsRequest,
         *,
         retry: bool = False,
-        **kwargs: Any,
-    ) -> Any: ...
+    ) -> om.OandaResponse[om.TradeTransactionResponse]: ...
     def set_trade_dependent_orders(
         self,
         account_id: str,
         trade_specifier: str,
-        request: Any = None,
+        request: om.SetTradeDependentOrdersRequest,
         *,
         retry: bool = False,
-        **kwargs: Any,
-    ) -> Any: ...
+    ) -> om.OandaResponse[om.TradeTransactionResponse]: ...
 
 
 class OandaTransactionClient(Protocol):
     """OANDA transaction endpoint methods required by transaction services."""
 
-    def list_transactions(self, account_id: str, request: Any = None) -> Any: ...
-    def get_transaction(self, account_id: str, transaction_id: str) -> Any: ...
+    def list_transactions(
+        self,
+        account_id: str,
+        request: om.TransactionsRequest | None = None,
+    ) -> om.OandaResponse[om.TransactionPagesResponse]: ...
+    def get_transaction(
+        self,
+        account_id: str,
+        transaction_id: str,
+    ) -> om.OandaResponse[om.TransactionResponse]: ...
     def get_transaction_range(
         self,
         account_id: str,
-        request: Any = None,
-        **kwargs: Any,
-    ) -> Any: ...
+        request: om.TransactionRangeRequest | None = None,
+    ) -> om.OandaResponse[om.TransactionsResponse]: ...
     def get_transactions_since(
         self,
         account_id: str,
-        request: Any = None,
-        **kwargs: Any,
-    ) -> Any: ...
-    def stream_transactions(self, account_id: str) -> Any: ...
+        request: om.TransactionsSinceRequest | None = None,
+    ) -> om.OandaResponse[om.TransactionsResponse]: ...
+    def stream_transactions(self, account_id: str) -> om.OandaResponse[None]: ...
 
 
 class OandaTimeFormatter(Protocol):
     """Formats datetimes for OANDA query parameters."""
 
-    def datetime_to_str(self, value: Any) -> str: ...
+    def datetime_to_str(self, value: datetime) -> str: ...
