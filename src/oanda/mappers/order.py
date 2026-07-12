@@ -18,6 +18,7 @@ from core import (
     OrderType,
     Position,
     PositionSide,
+    Trade,
     Units,
 )
 
@@ -35,12 +36,13 @@ class OandaOrderMapper:
     def order_kwargs(self, order: Order) -> dict[str, Any]:
         """Convert a Core order into OANDA order kwargs."""
         units = self._signed_units(order)
+        client_id = str(order.metadata.get("logical_trade_id") or order.id)
         base: dict[str, Any] = {
             "instrument": OandaInstrumentMapper.to_oanda(order.instrument),
             "units": str(units),
             "positionFill": "DEFAULT",
             "clientExtensions": {
-                "id": str(order.id),
+                "id": client_id,
                 "tag": "auto-forex",
             },
         }
@@ -101,7 +103,7 @@ class OandaOrderMapper:
             filled_units=filled_units,
             average_fill_price=average_fill_price,
             reason=reason,
-            metadata=reason.details,
+            metadata=order.metadata.merge(reason.details),
         )
         return OandaOrder(
             order=mapped_order,
@@ -155,6 +157,52 @@ class OandaOrderMapper:
             average_fill_price=self._fill_price(fill, position.instrument),
             reason=reason,
             metadata=reason.details,
+        )
+        return OandaOrder(
+            order=mapped_order,
+            related_transaction_ids=tuple(payload.get(body, "relatedTransactionIDs", ()) or ()),
+            last_transaction_id=payload.get(body, "lastTransactionID"),
+        ).order
+
+    def order_from_trade_close_response(
+        self,
+        response: om.OandaResponse[om.TradeTransactionResponse],
+        *,
+        trade: Trade,
+        planned_units: Units,
+    ) -> Order:
+        """Convert a close-trade response into a normalized Core order."""
+        body = payload.body(response)
+        fill = payload.first(body, "orderFillTransaction")
+        cancel = payload.first(body, "orderCancelTransaction")
+        reject = payload.first(body, "orderRejectTransaction")
+        create = payload.first(body, "orderCreateTransaction")
+        error_code = str(payload.get(body, "errorCode", "") or "")
+        status = self._status_from_transactions(
+            response=response,
+            fill=fill,
+            cancel=cancel,
+            reject=reject,
+            create=create,
+        )
+        reason = OrderReason(
+            code=self._reason_code(status=status, error_code=error_code),
+            details=self._result_details(response, fill, cancel, reject, create),
+        )
+        mapped_order = Order(
+            status=status,
+            broker_order_id=self._broker_order_id(fill, create, cancel, reject),
+            instrument=trade.instrument,
+            side=OrderSide.SELL if trade.side == PositionSide.LONG else OrderSide.BUY,
+            units=planned_units,
+            filled_units=Units.of(
+                abs(payload.decimal(payload.get(fill, "units", "0")))
+                if fill is not None
+                else Decimal("0")
+            ),
+            average_fill_price=self._fill_price(fill, trade.instrument),
+            reason=reason,
+            metadata=trade.metadata.merge(reason.details),
         )
         return OandaOrder(
             order=mapped_order,

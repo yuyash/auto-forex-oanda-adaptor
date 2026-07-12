@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core import BrokerTradeId, Currency, CurrencyPair, Money, PositionSide, Trade, Units
+from core import BrokerTradeId, Currency, CurrencyPair, Metadata, Money, PositionSide, Trade, Units
 
 import oanda.models as om
 from oanda.payload import OandaPayload as payload
@@ -36,6 +36,10 @@ class OandaTradeMapper:
         price = payload.get(item, "price")
         realized_pl = payload.get(item, "realizedPL")
         unrealized_pl = payload.get(item, "unrealizedPL")
+        client_trade_id = payload.get(payload.get(item, "clientExtensions"), "id")
+        metadata = payload.metadata(item)
+        if client_trade_id:
+            metadata = metadata.merge(Metadata.of(client_trade_id=str(client_trade_id)))
         trade = Trade(
             id=BrokerTradeId.of(str(payload.get(item, "id"))),
             instrument=instrument,
@@ -55,11 +59,11 @@ class OandaTradeMapper:
             unrealized_pl=Money.of(unrealized_pl, self.account_currency)
             if unrealized_pl is not None
             else None,
-            metadata=payload.metadata(item),
+            metadata=metadata,
         )
         return OandaTrade(
             trade=trade,
-            client_trade_id=payload.get(payload.get(item, "clientExtensions"), "id"),
+            client_trade_id=client_trade_id,
             initial_units=Units.of(abs(payload.decimal(payload.get(item, "initialUnits"))))
             if payload.get(item, "initialUnits") is not None
             else None,

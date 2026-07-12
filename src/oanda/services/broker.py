@@ -356,11 +356,13 @@ class OandaTradeService:
         gateway: OandaTradeGateway,
         account_currency: AccountCurrencyProvider,
         trade_mapper_factory: MapperFactory,
+        order_mapper: Any,
     ) -> None:
         self.account_id = account_id
         self.gateway = gateway
         self._account_currency = account_currency
         self._trade_mapper_factory = trade_mapper_factory
+        self.order_mapper = order_mapper
 
     def list_trades(self, **filters: object) -> Sequence[Trade]:
         """Return OANDA trades."""
@@ -383,16 +385,21 @@ class OandaTradeService:
         response = ensure_success(self.gateway.get_trade(self.account_id, trade_id), 200)
         return self._mapper().trade_from_response(response)
 
-    def close_trade(self, trade_id: str, *, units: Units | None = None) -> Metadata:
+    def close_trade(self, trade: Trade, *, units: Units | None = None) -> Order:
         """Close all or part of an OANDA trade."""
+        planned_units = Units.of((units or trade.units).copy_abs())
         request = (
-            om.CloseTradeRequest.model_validate({"units": str(units)})
+            om.CloseTradeRequest.model_validate({"units": str(planned_units)})
             if units is not None
             else None
         )
-        response = self.gateway.close_trade(self.account_id, trade_id, request, retry=True)
+        response = self.gateway.close_trade(self.account_id, str(trade.id), request, retry=True)
         OandaMutationResponsePolicy.raise_for_unexpected(response)
-        return payload.metadata(response.body)
+        return self.order_mapper.order_from_trade_close_response(
+            response,
+            trade=trade,
+            planned_units=planned_units,
+        )
 
     def set_trade_client_extensions(
         self,

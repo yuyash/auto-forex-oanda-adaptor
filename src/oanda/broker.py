@@ -68,6 +68,7 @@ class OandaBroker(Broker):
             gateway=gateway,
             account_currency=lambda: self.account_currency,
             trade_mapper_factory=OandaTradeMapper,
+            order_mapper=self.order_mapper,
         )
         self._transactions = OandaTransactionService(
             account_id=account_id,
@@ -109,6 +110,20 @@ class OandaBroker(Broker):
     def positions(self, *, instrument: CurrencyPair | None = None) -> Sequence[Position]:
         """Return open OANDA positions."""
         return self._positions.positions(instrument=instrument)
+
+    def trades(self, *, instrument: CurrencyPair | None = None) -> Sequence[Trade]:
+        """Return OANDA trades."""
+        trades = self._trades.list_trades()
+        if instrument is None:
+            return trades
+        return tuple(trade for trade in trades if trade.instrument == instrument)
+
+    def open_trades(self, *, instrument: CurrencyPair | None = None) -> Sequence[Trade]:
+        """Return open OANDA trades."""
+        trades = self._trades.list_open_trades()
+        if instrument is None:
+            return trades
+        return tuple(trade for trade in trades if trade.instrument == instrument)
 
     def list_orders(self, **filters: object) -> Sequence[Metadata]:
         """Return OANDA orders as raw metadata snapshots."""
@@ -158,9 +173,9 @@ class OandaBroker(Broker):
         """Return one OANDA trade."""
         return self._trades.get_trade(trade_id)
 
-    def close_trade(self, trade_id: str, *, units: Units | None = None) -> Metadata:
+    def close_trade(self, trade: Trade, *, units: Units | None = None) -> Order:
         """Close all or part of an OANDA trade."""
-        return self._trades.close_trade(trade_id, units=units)
+        return self._trades.close_trade(trade, units=units)
 
     def set_trade_client_extensions(
         self,
