@@ -14,7 +14,8 @@ from oanda.payload import OandaPayload as payload
 from oanda.services.protocols import (
     AccountCurrencyProvider,
     MapperFactory,
-    OandaTransactionGateway,
+    OandaTimeFormatter,
+    OandaTransactionClient,
 )
 
 
@@ -25,12 +26,14 @@ class OandaTransactionService:
         self,
         *,
         account_id: str,
-        gateway: OandaTransactionGateway,
+        transactions: OandaTransactionClient,
+        time_formatter: OandaTimeFormatter,
         account_currency: AccountCurrencyProvider,
         transaction_mapper_factory: MapperFactory,
     ) -> None:
         self.account_id = account_id
-        self.gateway = gateway
+        self.transactions = transactions
+        self.time_formatter = time_formatter
         self._account_currency = account_currency
         self._transaction_mapper_factory = transaction_mapper_factory
 
@@ -44,7 +47,7 @@ class OandaTransactionService:
     ) -> Metadata:
         """Return OANDA transaction page metadata."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.list_transactions(
+            self.transactions.list_transactions(
                 self.account_id,
                 om.TransactionsRequest.model_validate(
                     payload.clean(
@@ -64,7 +67,7 @@ class OandaTransactionService:
     def get_transaction(self, transaction_id: str) -> Transaction:
         """Return one OANDA transaction."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.get_transaction(self.account_id, transaction_id), 200
+            self.transactions.get_transaction(self.account_id, transaction_id), 200
         )
         return self.mapper().transaction_from_response(response)
 
@@ -77,7 +80,7 @@ class OandaTransactionService:
     ) -> Sequence[Transaction]:
         """Return OANDA transactions by ID range."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.get_transaction_range(
+            self.transactions.get_transaction_range(
                 self.account_id,
                 om.TransactionRangeRequest.model_validate(
                     payload.clean(
@@ -101,7 +104,7 @@ class OandaTransactionService:
     ) -> Sequence[Transaction]:
         """Return OANDA transactions since one transaction ID."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.get_transactions_since(
+            self.transactions.get_transactions_since(
                 self.account_id,
                 om.TransactionsSinceRequest.model_validate(
                     payload.clean(
@@ -118,7 +121,7 @@ class OandaTransactionService:
 
     def stream_transactions(self) -> Iterable[Transaction]:
         """Yield OANDA transaction stream updates."""
-        response = self.gateway.stream_transactions(self.account_id)
+        response = self.transactions.stream_transactions(self.account_id)
         mapper = self.mapper()
         for part_type, value in response.parts():
             if part_type.endswith("Heartbeat"):
@@ -129,7 +132,7 @@ class OandaTransactionService:
         """Format an optional datetime for OANDA transaction queries."""
         if value is None:
             return None
-        return self.gateway.datetime_to_str(value)
+        return self.time_formatter.datetime_to_str(value)
 
     def mapper(self) -> Any:
         """Create the mapper with the current account currency."""

@@ -18,6 +18,6 @@ class TestProvider:
         assert isinstance(provider.account_manager, OandaAccountManager)
         assert isinstance(provider.broker, OandaBroker)
         assert isinstance(provider.data, OandaDataSource)
-        assert provider.account_manager.gateway is gateway
+        assert provider.account_manager.accounts is gateway.accounts
         assert provider.broker.gateway is gateway
-        assert provider.data.gateway is gateway
+        assert provider.data.pricing is gateway.pricing

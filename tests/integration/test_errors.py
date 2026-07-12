@@ -42,4 +42,4 @@ class TestErrors:
         )
 
         with pytest.raises(OandaAuthenticationError):
-            gateway.list_accounts()
+            gateway.accounts.list_accounts()

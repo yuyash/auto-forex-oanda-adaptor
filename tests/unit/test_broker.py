@@ -35,12 +35,12 @@ class TestBroker:
         response = FakeResponse(201, {"orderFillTransaction": SimpleNamespace(id="100")})
         order_mapper.order_kwargs.return_value = {"units": "1000", "instrument": "USD_JPY"}
         order_mapper.order_from_order_response.return_value = result
-        gateway.create_market_order.return_value = response
+        gateway.orders.create_market_order.return_value = response
         broker = OandaBroker(account_id="001", gateway=gateway, order_mapper=order_mapper)
 
         assert broker.place_order(order) == result
 
-        gateway.create_market_order.assert_called_once_with(
+        gateway.orders.create_market_order.assert_called_once_with(
             "001",
             retry=True,
             units="1000",
@@ -52,14 +52,14 @@ class TestBroker:
         gateway = Mock()
         account_mapper = Mock()
         account_mapper.account_currency_from_response.return_value = Currency.of("USD")
-        gateway.get_account_summary.return_value = FakeResponse(
+        gateway.accounts.get_account_summary.return_value = FakeResponse(
             200, {"account": {"currency": "USD"}}
         )
         broker = OandaBroker(account_id="001", gateway=gateway, account_mapper=account_mapper)
 
         assert broker.account_currency == Currency.of("USD")
         assert broker.account_currency == Currency.of("USD")
-        gateway.get_account_summary.assert_called_once_with("001")
+        gateway.accounts.get_account_summary.assert_called_once_with("001")
 
     def test_broker_close_position_builds_oanda_side_request(self) -> None:
         gateway = Mock()
@@ -73,7 +73,7 @@ class TestBroker:
             ),
         )
         response = FakeResponse(200, {"longOrderFillTransaction": SimpleNamespace(id="10")})
-        gateway.close_position.return_value = response
+        gateway.positions.close_position.return_value = response
         close_order = Order(
             instrument=USD_JPY,
             side=OrderSide.SELL,
@@ -86,7 +86,7 @@ class TestBroker:
             broker.close_position(position=position, side=PositionSide.LONG, units=Units("250"))
             == close_order
         )
-        gateway.close_position.assert_called_once_with(
+        gateway.positions.close_position.assert_called_once_with(
             "001",
             "USD_JPY",
             longUnits="250",
@@ -106,17 +106,17 @@ class TestBroker:
             ),
         )
         account_mapper.account_currency_from_response.return_value = Currency.of("USD")
-        gateway.get_account_summary.return_value = FakeResponse(
+        gateway.accounts.get_account_summary.return_value = FakeResponse(
             200, {"account": {"currency": "USD"}}
         )
-        gateway.list_open_positions.return_value = FakeResponse(200, {"positions": []})
+        gateway.positions.list_open_positions.return_value = FakeResponse(200, {"positions": []})
         mapper.positions_from_response.return_value = (position,)
         monkeypatch.setattr(broker_module, "OandaPositionMapper", Mock(return_value=mapper))
         broker = OandaBroker(account_id="001", gateway=gateway, account_mapper=account_mapper)
 
         assert broker.positions(instrument=USD_JPY) == (position,)
         mapper.positions_from_response.assert_called_once_with(
-            gateway.list_open_positions.return_value
+            gateway.positions.list_open_positions.return_value
         )
 
     def test_broker_trade_and_transaction_methods_use_gateway_and_mapper(
@@ -128,11 +128,13 @@ class TestBroker:
         trade_mapper = Mock()
         transaction_mapper = Mock()
         account_mapper.account_currency_from_response.return_value = Currency.of("USD")
-        gateway.get_account_summary.return_value = FakeResponse(
+        gateway.accounts.get_account_summary.return_value = FakeResponse(
             200, {"account": {"currency": "USD"}}
         )
-        gateway.list_open_trades.return_value = FakeResponse(200, {"trades": []})
-        gateway.get_transactions_since.return_value = FakeResponse(200, {"transactions": []})
+        gateway.trades.list_open_trades.return_value = FakeResponse(200, {"trades": []})
+        gateway.transactions.get_transactions_since.return_value = FakeResponse(
+            200, {"transactions": []}
+        )
         trade_mapper.trades_from_response.return_value = ("trade",)
         transaction_mapper.transactions_from_response.return_value = ("transaction",)
         monkeypatch.setattr(broker_module, "OandaTradeMapper", Mock(return_value=trade_mapper))
@@ -146,8 +148,8 @@ class TestBroker:
         assert broker.list_open_trades() == ("trade",)
         assert broker.get_transactions_since("10", types=("ORDER_FILL",)) == ("transaction",)
 
-        gateway.list_open_trades.assert_called_once_with("001")
-        gateway.get_transactions_since.assert_called_once_with(
+        gateway.trades.list_open_trades.assert_called_once_with("001")
+        gateway.transactions.get_transactions_since.assert_called_once_with(
             "001",
             om.TransactionsSinceRequest(id="10", type=(om.TransactionFilter.ORDER_FILL,)),
         )
@@ -155,8 +157,8 @@ class TestBroker:
     def test_broker_order_mutation_results_return_metadata(self) -> None:
         gateway = Mock()
         response = FakeResponse(200, {"lastTransactionID": "10"})
-        gateway.cancel_order.return_value = response
-        gateway.set_order_client_extensions.return_value = response
+        gateway.orders.cancel_order.return_value = response
+        gateway.orders.set_order_client_extensions.return_value = response
         broker = OandaBroker(account_id="001", gateway=gateway)
 
         assert broker.cancel_order("100")["lastTransactionID"] == "10"
@@ -166,8 +168,8 @@ class TestBroker:
             )["lastTransactionID"]
             == "10"
         )
-        gateway.cancel_order.assert_called_once_with("001", "100", retry=True)
-        gateway.set_order_client_extensions.assert_called_once_with(
+        gateway.orders.cancel_order.assert_called_once_with("001", "100", retry=True)
+        gateway.orders.set_order_client_extensions.assert_called_once_with(
             "001",
             "100",
             om.SetOrderClientExtensionsRequest.model_validate(

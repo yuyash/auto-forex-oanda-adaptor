@@ -59,7 +59,7 @@ class TestBrokerLiveReadonly:
         oanda_settings: OandaSettings,
     ) -> None:
         broker = oanda_provider.broker
-        response = broker.gateway.stream_transactions(oanda_settings.account_id)
+        response = broker.gateway.transactions.stream_transactions(oanda_settings.account_id)
         try:
             assert response.status == 200
             assert isinstance(response.raw, OandaStreamResponse)

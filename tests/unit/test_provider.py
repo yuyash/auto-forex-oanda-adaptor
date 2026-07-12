@@ -16,7 +16,7 @@ from oanda.provider import OandaProvider
 
 @dataclass
 class AccountManagerFake:
-    gateway: object
+    accounts: object
 
 
 @dataclass
@@ -25,12 +25,20 @@ class AccountBoundServiceFake:
     gateway: object
 
 
+@dataclass
+class DataSourceFake:
+    account_id: str
+    pricing: object
+    time_formatter: object
+    session: object
+
+
 class TestProvider:
     def test_oanda_provider_bundles_mocked_services(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(provider_module, "OandaAccountManager", AccountManagerFake)
         monkeypatch.setattr(provider_module, "OandaBroker", AccountBoundServiceFake)
-        monkeypatch.setattr(provider_module, "OandaDataSource", AccountBoundServiceFake)
-        gateway = object()
+        monkeypatch.setattr(provider_module, "OandaDataSource", DataSourceFake)
+        gateway = SimpleNamespace(accounts=object(), pricing=object(), transport=object())
 
         provider = OandaProvider(account_id="001", gateway=cast(OandaGateway, gateway))
 
@@ -39,10 +47,12 @@ class TestProvider:
         assert provider.gateway is gateway
         assert isinstance(provider.account_manager, AccountManagerFake)
         assert isinstance(provider.broker, AccountBoundServiceFake)
-        assert isinstance(provider.data, AccountBoundServiceFake)
-        assert provider.account_manager.gateway is gateway
+        assert isinstance(provider.data, DataSourceFake)
+        assert provider.account_manager.accounts is gateway.accounts
         assert provider.broker.gateway is gateway
-        assert provider.data.gateway is gateway
+        assert provider.data.pricing is gateway.pricing
+        assert provider.data.time_formatter is gateway.transport
+        assert provider.data.session is gateway.transport
 
     def test_oanda_provider_from_settings_uses_gateway_factory(
         self,
@@ -50,8 +60,8 @@ class TestProvider:
     ) -> None:
         monkeypatch.setattr(provider_module, "OandaAccountManager", AccountManagerFake)
         monkeypatch.setattr(provider_module, "OandaBroker", AccountBoundServiceFake)
-        monkeypatch.setattr(provider_module, "OandaDataSource", AccountBoundServiceFake)
-        gateway = object()
+        monkeypatch.setattr(provider_module, "OandaDataSource", DataSourceFake)
+        gateway = SimpleNamespace(accounts=object(), pricing=object(), transport=object())
         gateway_cls = Mock()
         gateway_cls.from_settings.return_value = gateway
         monkeypatch.setattr(provider_module, "OandaGateway", gateway_cls)

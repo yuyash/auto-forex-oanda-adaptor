@@ -13,7 +13,7 @@ from oanda.payload import OandaPayload as payload
 from oanda.services.protocols import (
     AccountCurrencyProvider,
     MapperFactory,
-    OandaPositionGateway,
+    OandaPositionClient,
 )
 
 
@@ -24,19 +24,19 @@ class OandaPositionService:
         self,
         *,
         account_id: str,
-        gateway: OandaPositionGateway,
+        positions: OandaPositionClient,
         account_currency: AccountCurrencyProvider,
         position_mapper_factory: MapperFactory,
     ) -> None:
         self.account_id = account_id
-        self.gateway = gateway
+        self.positions_client = positions
         self._account_currency = account_currency
         self._position_mapper_factory = position_mapper_factory
 
     def positions(self, *, instrument: CurrencyPair | None = None) -> Sequence[Position]:
         """Return open OANDA positions."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.list_open_positions(self.account_id), 200
+            self.positions_client.list_open_positions(self.account_id), 200
         )
         positions = self.mapper().positions_from_response(response)
         if instrument is None:
@@ -46,7 +46,7 @@ class OandaPositionService:
     def list_positions(self) -> Sequence[Position]:
         """Return all OANDA positions."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.list_positions(self.account_id), 200
+            self.positions_client.list_positions(self.account_id), 200
         )
         return self.mapper().positions_from_response(response)
 
@@ -57,7 +57,9 @@ class OandaPositionService:
     def get_position(self, instrument: CurrencyPair) -> Position:
         """Return one OANDA position."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.get_position(self.account_id, OandaInstrumentMapper.to_oanda(instrument)),
+            self.positions_client.get_position(
+                self.account_id, OandaInstrumentMapper.to_oanda(instrument)
+            ),
             200,
         )
         position = self.mapper().position_from_oanda(payload.get(response.body, "position"))

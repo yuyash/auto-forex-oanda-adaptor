@@ -13,6 +13,14 @@ class IntegrationGateway:
         self.market_orders: list[dict[str, Any]] = []
         self.close_position_calls: list[tuple[str, dict[str, Any]]] = []
         self.configure_account_calls: list[om.ConfigureAccountRequest] = []
+        self.opener = SimpleNamespace(close=lambda: None)
+        self.accounts = self
+        self.orders = self
+        self.positions = self
+        self.pricing = self
+        self.trades = self
+        self.transactions = self
+        self.transport = self
 
     def list_accounts(self) -> FakeResponse:
         return FakeResponse(
@@ -156,6 +164,11 @@ class IntegrationGateway:
         _ = kwargs
         return FakeResponse(200, {"prices": [price_namespace()]})
 
+    def get_instrument_prices(self, instrument: str, **kwargs: Any) -> FakeResponse:
+        _ = instrument
+        _ = kwargs
+        return FakeResponse(200, {"prices": [price_namespace()]})
+
     def get_account_candles(
         self,
         account_id: str,
@@ -168,6 +181,17 @@ class IntegrationGateway:
         _ = request
         _ = kwargs
         return FakeResponse(200, {"candles": [candle_namespace()]})
+
+    def stream_account_prices(
+        self,
+        account_id: str,
+        request: om.PricingStreamRequest | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        _ = account_id
+        _ = request
+        _ = kwargs
+        return SimpleNamespace(parts=lambda: (("ClientPrice", price_namespace()),))
 
     def datetime_to_str(self, value: object) -> str:
         if isinstance(value, datetime):

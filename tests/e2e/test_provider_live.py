@@ -18,6 +18,6 @@ class TestProviderLive:
         broker = oanda_provider.broker
         data_source = oanda_provider.data
 
-        assert account_manager.gateway is broker.gateway
-        assert data_source.gateway is broker.gateway
+        assert account_manager.accounts is broker.gateway.accounts
+        assert data_source.pricing is broker.gateway.pricing
         assert summary.account_id.value == oanda_settings.account_id

@@ -16,10 +16,8 @@ from oanda.mappers import OandaInstrumentMapper, OandaMarketDataMapper
 from oanda.payload import OandaPayload as payload
 
 
-class OandaPricingGateway(Protocol):
-    """Gateway methods required by the OANDA data source."""
-
-    opener: Any
+class OandaPricingClient(Protocol):
+    """OANDA pricing endpoint methods required by the data source."""
 
     def get_instrument_prices(self, instrument: str, **kwargs: Any) -> Any: ...
     def get_account_prices(self, account_id: str, request: Any = None, **kwargs: Any) -> Any: ...
@@ -31,7 +29,18 @@ class OandaPricingGateway(Protocol):
         **kwargs: Any,
     ) -> Any: ...
     def stream_account_prices(self, account_id: str, request: Any = None, **kwargs: Any) -> Any: ...
+
+
+class OandaTimeFormatter(Protocol):
+    """Formats datetimes for OANDA query parameters."""
+
     def datetime_to_str(self, value: Any) -> str: ...
+
+
+class OandaSession(Protocol):
+    """Closable OANDA session dependency."""
+
+    opener: Any
 
 
 class OandaDataSource(DataSource):
@@ -41,19 +50,26 @@ class OandaDataSource(DataSource):
         self,
         *,
         account_id: str,
-        gateway: OandaPricingGateway,
+        pricing: OandaPricingClient,
+        time_formatter: OandaTimeFormatter,
+        session: OandaSession | None = None,
         mapper: OandaMarketDataMapper | None = None,
     ) -> None:
         self.account_id = account_id
-        self.gateway = gateway
+        self.pricing = pricing
+        self.time_formatter = time_formatter
+        self.session = session
         self.mapper = mapper or OandaMarketDataMapper()
 
     @classmethod
     def from_settings(cls, settings: OandaSettings) -> OandaDataSource:
         """Create an OANDA data source from settings."""
+        gateway = OandaGateway.from_settings(settings)
         return cls(
             account_id=settings.account_id,
-            gateway=OandaGateway.from_settings(settings),
+            pricing=gateway.pricing,
+            time_formatter=gateway.transport,
+            session=gateway.transport,
         )
 
     def _raw_ticks(
@@ -69,7 +85,7 @@ class OandaDataSource(DataSource):
             return self.prices(instruments=(instrument,))
         else:
             response = OandaResponsePolicy.ensure_success(
-                self.gateway.get_instrument_prices(
+                self.pricing.get_instrument_prices(
                     oanda_instrument,
                     **{
                         "from": self.format_time(start_at),
@@ -91,7 +107,7 @@ class OandaDataSource(DataSource):
     ) -> Iterable[Tick]:
         """Return latest OANDA prices for one or more instruments."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.get_account_prices(
+            self.pricing.get_account_prices(
                 self.account_id,
                 om.PricingRequest.model_validate(
                     {
@@ -119,7 +135,7 @@ class OandaDataSource(DataSource):
     ) -> Iterable[Candle]:
         """Yield OANDA candlesticks as Core candles."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.get_account_candles(
+            self.pricing.get_account_candles(
                 self.account_id,
                 OandaInstrumentMapper.to_oanda(instrument),
                 om.AccountCandlesRequest.model_validate(
@@ -147,7 +163,7 @@ class OandaDataSource(DataSource):
     ) -> Iterable[Tick]:
         """Yield live OANDA pricing stream updates as Core ticks."""
         oanda_instruments = ",".join(OandaInstrumentMapper.to_oanda(item) for item in instruments)
-        response = self.gateway.stream_account_prices(
+        response = self.pricing.stream_account_prices(
             self.account_id,
             instruments=oanda_instruments,
             snapshot=snapshot,
@@ -159,7 +175,9 @@ class OandaDataSource(DataSource):
 
     def close(self) -> None:
         """Close the underlying HTTP session when available."""
-        close = getattr(self.gateway.opener, "close", None)
+        if self.session is None:
+            return
+        close = getattr(self.session.opener, "close", None)
         if close is not None:
             close()
 
@@ -167,4 +185,4 @@ class OandaDataSource(DataSource):
         """Format an optional datetime for OANDA query parameters."""
         if value is None:
             return None
-        return self.gateway.datetime_to_str(value)
+        return self.time_formatter.datetime_to_str(value)

@@ -12,7 +12,7 @@ from oanda.errors import OandaResponsePolicy
 from oanda.mappers.instrument import OandaInstrumentMapper
 from oanda.payload import OandaPayload as payload
 from oanda.services.policies import OandaMutationResponsePolicy
-from oanda.services.protocols import OandaOrderGateway
+from oanda.services.protocols import OandaOrderClient, OandaPositionClient
 
 
 class OandaOrderRequestFactory:
@@ -68,11 +68,13 @@ class OandaOrderService:
         self,
         *,
         account_id: str,
-        gateway: OandaOrderGateway,
+        orders: OandaOrderClient,
+        positions: OandaPositionClient,
         order_mapper: Any,
     ) -> None:
         self.account_id = account_id
-        self.gateway = gateway
+        self.orders = orders
+        self.positions = positions
         self.order_mapper = order_mapper
         self.request_factory = OandaOrderRequestFactory(order_mapper)
 
@@ -80,11 +82,11 @@ class OandaOrderService:
         """Place an order through OANDA."""
         kwargs = self.order_mapper.order_kwargs(order)
         if order.order_type == OrderType.MARKET:
-            response = self.gateway.create_market_order(self.account_id, retry=True, **kwargs)
+            response = self.orders.create_market_order(self.account_id, retry=True, **kwargs)
         elif order.order_type == OrderType.LIMIT:
-            response = self.gateway.create_limit_order(self.account_id, retry=True, **kwargs)
+            response = self.orders.create_limit_order(self.account_id, retry=True, **kwargs)
         elif order.order_type == OrderType.STOP:
-            response = self.gateway.create_stop_order(self.account_id, retry=True, **kwargs)
+            response = self.orders.create_stop_order(self.account_id, retry=True, **kwargs)
         else:
             msg = f"unsupported OANDA order type: {order.order_type}"
             raise ValueError(msg)
@@ -104,7 +106,7 @@ class OandaOrderService:
         source_units = units if units is not None else state.units
         planned_units = Units.of(source_units.copy_abs())
         kwargs = OandaPositionCloseRequestFactory.kwargs(side=side, units=planned_units)
-        response = self.gateway.close_position(
+        response = self.positions.close_position(
             self.account_id,
             OandaInstrumentMapper.to_oanda(position.instrument),
             longUnits=kwargs["longUnits"],
@@ -121,7 +123,7 @@ class OandaOrderService:
     def list_orders(self, **filters: object) -> Sequence[Metadata]:
         """Return OANDA orders as raw metadata snapshots."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.list_orders(
+            self.orders.list_orders(
                 self.account_id,
                 om.OrdersRequest.model_validate(payload.clean(filters)),
             ),
@@ -133,7 +135,7 @@ class OandaOrderService:
     def list_pending_orders(self) -> Sequence[Metadata]:
         """Return OANDA pending orders as raw metadata snapshots."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.list_pending_orders(self.account_id), 200
+            self.orders.list_pending_orders(self.account_id), 200
         )
         orders = payload.get(response.body, "orders", ()) or ()
         return tuple(payload.metadata(order) for order in orders)
@@ -141,13 +143,13 @@ class OandaOrderService:
     def get_order(self, order_id: str) -> Metadata:
         """Return one OANDA order as raw metadata."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.get_order(self.account_id, order_id), 200
+            self.orders.get_order(self.account_id, order_id), 200
         )
         return self.order_mapper.metadata_from_order_response(response)
 
     def replace_order(self, order_id: str, order: Order) -> Order:
         """Replace one OANDA order."""
-        response = self.gateway.replace_order(
+        response = self.orders.replace_order(
             self.account_id,
             order_id,
             om.ReplaceOrderRequest(order=self.request_factory.request(order)),
@@ -158,7 +160,7 @@ class OandaOrderService:
 
     def cancel_order(self, order_id: str) -> Metadata:
         """Cancel one OANDA order."""
-        response = self.gateway.cancel_order(self.account_id, order_id, retry=True)
+        response = self.orders.cancel_order(self.account_id, order_id, retry=True)
         OandaMutationResponsePolicy.raise_for_unexpected(response)
         return payload.metadata(response.body)
 
@@ -172,7 +174,7 @@ class OandaOrderService:
     ) -> Metadata:
         """Set OANDA order client extensions."""
         request = payload.client_extensions(client_id=client_id, tag=tag, comment=comment)
-        response = self.gateway.set_order_client_extensions(
+        response = self.orders.set_order_client_extensions(
             self.account_id,
             order_id,
             om.SetOrderClientExtensionsRequest.model_validate(

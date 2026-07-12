@@ -52,25 +52,27 @@ class OandaBroker(Broker):
         self._account_currency: Currency | None = None
         self._orders = OandaOrderService(
             account_id=account_id,
-            gateway=gateway,
+            orders=gateway.orders,
+            positions=gateway.positions,
             order_mapper=self.order_mapper,
         )
         self._positions = OandaPositionService(
             account_id=account_id,
-            gateway=gateway,
+            positions=gateway.positions,
             account_currency=lambda: self.account_currency,
             position_mapper_factory=OandaPositionMapper,
         )
         self._trades = OandaTradeService(
             account_id=account_id,
-            gateway=gateway,
+            trades=gateway.trades,
             account_currency=lambda: self.account_currency,
             trade_mapper_factory=OandaTradeMapper,
             order_mapper=self.order_mapper,
         )
         self._transactions = OandaTransactionService(
             account_id=account_id,
-            gateway=gateway,
+            transactions=gateway.transactions,
+            time_formatter=gateway.transport,
             account_currency=lambda: self.account_currency,
             transaction_mapper_factory=OandaTransactionMapper,
         )
@@ -88,7 +90,7 @@ class OandaBroker(Broker):
         """Return the OANDA account home currency, loaded from account summary."""
         if self._account_currency is None:
             response = OandaResponsePolicy.ensure_success(
-                self.gateway.get_account_summary(self.account_id), 200
+                self.gateway.accounts.get_account_summary(self.account_id), 200
             )
             self._account_currency = self.account_mapper.account_currency_from_response(response)
         return self._account_currency

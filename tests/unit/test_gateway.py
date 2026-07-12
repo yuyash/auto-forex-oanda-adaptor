@@ -71,7 +71,7 @@ class TestGateway:
             opener=opener,
         )
 
-        response = gateway.list_accounts()
+        response = gateway.accounts.list_accounts()
 
         assert isinstance(response.body, AccountsResponse)
         assert response.body.accounts[0].id == "001"
@@ -88,7 +88,7 @@ class TestGateway:
             opener=opener,
         )
 
-        gateway.create_order(
+        gateway.orders.create_order(
             "001",
             om.CreateOrderRequest(
                 order=om.MarketOrderRequest(
@@ -108,7 +108,7 @@ class TestGateway:
         ("call", "status", "method", "path", "query", "body"),
         [
             (
-                lambda gateway: gateway.request(
+                lambda gateway: gateway.transport.request(
                     "PATCH", "/v3/accounts/001/custom", query={"a": 1}, body={"b": 2}
                 ),
                 200,
@@ -117,9 +117,16 @@ class TestGateway:
                 {"a": "1"},
                 {"b": 2},
             ),
-            (lambda gateway: gateway.list_accounts(), 200, "GET", "/v3/accounts", {}, None),
             (
-                lambda gateway: gateway.get_account("001"),
+                lambda gateway: gateway.accounts.list_accounts(),
+                200,
+                "GET",
+                "/v3/accounts",
+                {},
+                None,
+            ),
+            (
+                lambda gateway: gateway.accounts.get_account("001"),
                 200,
                 "GET",
                 "/v3/accounts/001",
@@ -127,7 +134,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.get_account_summary("001"),
+                lambda gateway: gateway.accounts.get_account_summary("001"),
                 200,
                 "GET",
                 "/v3/accounts/001/summary",
@@ -135,7 +142,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.get_account_instruments(
+                lambda gateway: gateway.accounts.get_account_instruments(
                     "001", om.AccountInstrumentsRequest(instruments=("USD_JPY", "EUR_USD"))
                 ),
                 200,
@@ -145,7 +152,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.configure_account(
+                lambda gateway: gateway.accounts.configure_account(
                     "001", om.ConfigureAccountRequest(alias="primary")
                 ),
                 200,
@@ -155,7 +162,7 @@ class TestGateway:
                 {"alias": "primary"},
             ),
             (
-                lambda gateway: gateway.get_account_changes(
+                lambda gateway: gateway.accounts.get_account_changes(
                     "001",
                     om.AccountChangesRequest.model_validate({"sinceTransactionID": "10"}),
                 ),
@@ -166,7 +173,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.create_order(
+                lambda gateway: gateway.orders.create_order(
                     "001",
                     om.CreateOrderRequest(order=om.MarketOrderRequest(type=om.OrderType.MARKET)),
                 ),
@@ -177,7 +184,7 @@ class TestGateway:
                 {"order": {"type": "MARKET"}},
             ),
             (
-                lambda gateway: gateway.list_orders(
+                lambda gateway: gateway.orders.list_orders(
                     "001", om.OrdersRequest(count=10, state=om.OrderStateFilter.PENDING)
                 ),
                 200,
@@ -187,7 +194,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.list_pending_orders("001"),
+                lambda gateway: gateway.orders.list_pending_orders("001"),
                 200,
                 "GET",
                 "/v3/accounts/001/pendingOrders",
@@ -195,7 +202,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.get_order("001", "100"),
+                lambda gateway: gateway.orders.get_order("001", "100"),
                 200,
                 "GET",
                 "/v3/accounts/001/orders/100",
@@ -203,7 +210,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.replace_order(
+                lambda gateway: gateway.orders.replace_order(
                     "001",
                     "100",
                     om.ReplaceOrderRequest(order=om.LimitOrderRequest(type=om.OrderType.LIMIT)),
@@ -215,7 +222,7 @@ class TestGateway:
                 {"order": {"type": "LIMIT"}},
             ),
             (
-                lambda gateway: gateway.cancel_order("001", "100"),
+                lambda gateway: gateway.orders.cancel_order("001", "100"),
                 200,
                 "PUT",
                 "/v3/accounts/001/orders/100/cancel",
@@ -223,7 +230,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.set_order_client_extensions(
+                lambda gateway: gateway.orders.set_order_client_extensions(
                     "001",
                     "100",
                     om.SetOrderClientExtensionsRequest.model_validate(
@@ -237,7 +244,9 @@ class TestGateway:
                 {"clientExtensions": {"id": "client-100"}},
             ),
             (
-                lambda gateway: gateway.create_market_order("001", instrument="USD_JPY", units="1"),
+                lambda gateway: gateway.orders.create_market_order(
+                    "001", instrument="USD_JPY", units="1"
+                ),
                 201,
                 "POST",
                 "/v3/accounts/001/orders",
@@ -245,7 +254,7 @@ class TestGateway:
                 {"order": {"instrument": "USD_JPY", "units": "1", "type": "MARKET"}},
             ),
             (
-                lambda gateway: gateway.create_limit_order(
+                lambda gateway: gateway.orders.create_limit_order(
                     "001", instrument="USD_JPY", units="1", price="100.00"
                 ),
                 201,
@@ -262,7 +271,7 @@ class TestGateway:
                 },
             ),
             (
-                lambda gateway: gateway.replace_limit_order(
+                lambda gateway: gateway.orders.replace_limit_order(
                     "001", "100", instrument="USD_JPY", units="1", price="100.00"
                 ),
                 201,
@@ -279,7 +288,7 @@ class TestGateway:
                 },
             ),
             (
-                lambda gateway: gateway.create_stop_order(
+                lambda gateway: gateway.orders.create_stop_order(
                     "001", instrument="USD_JPY", units="1", price="100.00"
                 ),
                 201,
@@ -296,7 +305,7 @@ class TestGateway:
                 },
             ),
             (
-                lambda gateway: gateway.replace_stop_order(
+                lambda gateway: gateway.orders.replace_stop_order(
                     "001", "100", instrument="USD_JPY", units="1", price="100.00"
                 ),
                 201,
@@ -313,7 +322,7 @@ class TestGateway:
                 },
             ),
             (
-                lambda gateway: gateway.create_market_if_touched_order(
+                lambda gateway: gateway.orders.create_market_if_touched_order(
                     "001", instrument="USD_JPY", units="1", price="100.00"
                 ),
                 201,
@@ -330,7 +339,7 @@ class TestGateway:
                 },
             ),
             (
-                lambda gateway: gateway.replace_market_if_touched_order(
+                lambda gateway: gateway.orders.replace_market_if_touched_order(
                     "001", "100", instrument="USD_JPY", units="1", price="100.00"
                 ),
                 201,
@@ -347,7 +356,7 @@ class TestGateway:
                 },
             ),
             (
-                lambda gateway: gateway.create_take_profit_order(
+                lambda gateway: gateway.orders.create_take_profit_order(
                     "001", tradeID="200", price="151.00"
                 ),
                 201,
@@ -357,7 +366,7 @@ class TestGateway:
                 {"order": {"tradeID": "200", "price": "151.00", "type": "TAKE_PROFIT"}},
             ),
             (
-                lambda gateway: gateway.replace_take_profit_order(
+                lambda gateway: gateway.orders.replace_take_profit_order(
                     "001", "100", tradeID="200", price="151.00"
                 ),
                 201,
@@ -367,7 +376,7 @@ class TestGateway:
                 {"order": {"tradeID": "200", "price": "151.00", "type": "TAKE_PROFIT"}},
             ),
             (
-                lambda gateway: gateway.create_stop_loss_order(
+                lambda gateway: gateway.orders.create_stop_loss_order(
                     "001", tradeID="200", price="149.00"
                 ),
                 201,
@@ -377,7 +386,7 @@ class TestGateway:
                 {"order": {"tradeID": "200", "price": "149.00", "type": "STOP_LOSS"}},
             ),
             (
-                lambda gateway: gateway.replace_stop_loss_order(
+                lambda gateway: gateway.orders.replace_stop_loss_order(
                     "001", "100", tradeID="200", price="149.00"
                 ),
                 201,
@@ -387,7 +396,7 @@ class TestGateway:
                 {"order": {"tradeID": "200", "price": "149.00", "type": "STOP_LOSS"}},
             ),
             (
-                lambda gateway: gateway.create_trailing_stop_loss_order(
+                lambda gateway: gateway.orders.create_trailing_stop_loss_order(
                     "001", tradeID="200", distance="0.20"
                 ),
                 201,
@@ -397,7 +406,7 @@ class TestGateway:
                 {"order": {"tradeID": "200", "distance": "0.20", "type": "TRAILING_STOP_LOSS"}},
             ),
             (
-                lambda gateway: gateway.replace_trailing_stop_loss_order(
+                lambda gateway: gateway.orders.replace_trailing_stop_loss_order(
                     "001", "100", tradeID="200", distance="0.20"
                 ),
                 201,
@@ -407,7 +416,7 @@ class TestGateway:
                 {"order": {"tradeID": "200", "distance": "0.20", "type": "TRAILING_STOP_LOSS"}},
             ),
             (
-                lambda gateway: gateway.list_positions("001"),
+                lambda gateway: gateway.positions.list_positions("001"),
                 200,
                 "GET",
                 "/v3/accounts/001/positions",
@@ -415,7 +424,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.list_open_positions("001"),
+                lambda gateway: gateway.positions.list_open_positions("001"),
                 200,
                 "GET",
                 "/v3/accounts/001/openPositions",
@@ -423,7 +432,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.get_position("001", "USD_JPY"),
+                lambda gateway: gateway.positions.get_position("001", "USD_JPY"),
                 200,
                 "GET",
                 "/v3/accounts/001/positions/USD_JPY",
@@ -431,7 +440,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.close_position(
+                lambda gateway: gateway.positions.close_position(
                     "001",
                     "USD_JPY",
                     om.ClosePositionRequest.model_validate({"longUnits": "ALL"}),
@@ -443,7 +452,7 @@ class TestGateway:
                 {"longUnits": "ALL"},
             ),
             (
-                lambda gateway: gateway.get_account_prices(
+                lambda gateway: gateway.pricing.get_account_prices(
                     "001", instruments="USD_JPY", includeHomeConversions=True
                 ),
                 200,
@@ -453,7 +462,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.get_account_candles(
+                lambda gateway: gateway.pricing.get_account_candles(
                     "001", "USD_JPY", granularity="M1", count=1
                 ),
                 200,
@@ -463,7 +472,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.get_instrument_candles(
+                lambda gateway: gateway.pricing.get_instrument_candles(
                     "USD_JPY", granularity="M1", count=1
                 ),
                 200,
@@ -473,7 +482,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.get_instrument_prices(
+                lambda gateway: gateway.pricing.get_instrument_prices(
                     "USD_JPY", since="2026-01-01T00:00:00Z"
                 ),
                 200,
@@ -483,7 +492,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.list_trades(
+                lambda gateway: gateway.trades.list_trades(
                     "001", om.TradesRequest(count=10, state=om.TradeStateFilter.OPEN)
                 ),
                 200,
@@ -493,7 +502,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.list_open_trades("001"),
+                lambda gateway: gateway.trades.list_open_trades("001"),
                 200,
                 "GET",
                 "/v3/accounts/001/openTrades",
@@ -501,7 +510,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.get_trade("001", "200"),
+                lambda gateway: gateway.trades.get_trade("001", "200"),
                 200,
                 "GET",
                 "/v3/accounts/001/trades/200",
@@ -509,7 +518,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.close_trade(
+                lambda gateway: gateway.trades.close_trade(
                     "001", "200", om.CloseTradeRequest(units="ALL")
                 ),
                 200,
@@ -519,7 +528,7 @@ class TestGateway:
                 {"units": "ALL"},
             ),
             (
-                lambda gateway: gateway.set_trade_client_extensions(
+                lambda gateway: gateway.trades.set_trade_client_extensions(
                     "001",
                     "200",
                     om.SetTradeClientExtensionsRequest.model_validate(
@@ -533,7 +542,7 @@ class TestGateway:
                 {"clientExtensions": {"id": "trade-200"}},
             ),
             (
-                lambda gateway: gateway.set_trade_dependent_orders(
+                lambda gateway: gateway.trades.set_trade_dependent_orders(
                     "001",
                     "200",
                     om.SetTradeDependentOrdersRequest.model_validate(
@@ -547,7 +556,7 @@ class TestGateway:
                 {"takeProfit": {"price": "151.00"}},
             ),
             (
-                lambda gateway: gateway.list_transactions(
+                lambda gateway: gateway.transactions.list_transactions(
                     "001", om.TransactionsRequest.model_validate({"pageSize": 100})
                 ),
                 200,
@@ -557,7 +566,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.get_transaction("001", "300"),
+                lambda gateway: gateway.transactions.get_transaction("001", "300"),
                 200,
                 "GET",
                 "/v3/accounts/001/transactions/300",
@@ -565,7 +574,9 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.get_transaction_range("001", from_id="300", to_id="301"),
+                lambda gateway: gateway.transactions.get_transaction_range(
+                    "001", from_id="300", to_id="301"
+                ),
                 200,
                 "GET",
                 "/v3/accounts/001/transactions/idrange",
@@ -573,7 +584,7 @@ class TestGateway:
                 None,
             ),
             (
-                lambda gateway: gateway.get_transactions_since("001", id="300"),
+                lambda gateway: gateway.transactions.get_transactions_since("001", id="300"),
                 200,
                 "GET",
                 "/v3/accounts/001/transactions/sinceid",
@@ -617,7 +628,7 @@ class TestGateway:
         ("call", "path", "query", "stream_kind"),
         [
             (
-                lambda gateway: gateway.stream_account_prices(
+                lambda gateway: gateway.pricing.stream_account_prices(
                     "001", instruments="USD_JPY", snapshot=True
                 ),
                 "/v3/accounts/001/pricing/stream",
@@ -625,7 +636,7 @@ class TestGateway:
                 "pricing",
             ),
             (
-                lambda gateway: gateway.stream_transactions("001"),
+                lambda gateway: gateway.transactions.stream_transactions("001"),
                 "/v3/accounts/001/transactions/stream",
                 {},
                 "transactions",
@@ -667,7 +678,10 @@ class TestGateway:
             opener=FakeOpener([]),
         )
 
-        assert gateway.datetime_to_str(datetime(2026, 1, 1, tzinfo=UTC)) == "2026-01-01T00:00:00Z"
+        assert (
+            gateway.transport.datetime_to_str(datetime(2026, 1, 1, tzinfo=UTC))
+            == "2026-01-01T00:00:00Z"
+        )
 
     def test_gateway_maps_http_error_without_real_network(self) -> None:
         class ErrorOpener:
@@ -700,7 +714,7 @@ class TestGateway:
         )
 
         with pytest.raises(OandaAuthenticationError):
-            gateway.list_accounts()
+            gateway.accounts.list_accounts()
 
     def test_gateway_retries_retryable_api_errors_without_real_network(self) -> None:
         opener = FakeOpener(
@@ -725,7 +739,7 @@ class TestGateway:
             ),
         )
 
-        response = gateway.list_accounts()
+        response = gateway.accounts.list_accounts()
 
         assert response.status == 200
         assert opener.calls == 2
@@ -753,6 +767,6 @@ class TestGateway:
         )
 
         with pytest.raises(OandaAuthenticationError):
-            gateway.list_accounts()
+            gateway.accounts.list_accounts()
 
         assert opener.calls == 1

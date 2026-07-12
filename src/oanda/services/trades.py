@@ -11,7 +11,7 @@ import oanda.models as om
 from oanda.errors import OandaResponsePolicy
 from oanda.payload import OandaPayload as payload
 from oanda.services.policies import OandaMutationResponsePolicy
-from oanda.services.protocols import AccountCurrencyProvider, MapperFactory, OandaTradeGateway
+from oanda.services.protocols import AccountCurrencyProvider, MapperFactory, OandaTradeClient
 
 
 class OandaTradeService:
@@ -21,13 +21,13 @@ class OandaTradeService:
         self,
         *,
         account_id: str,
-        gateway: OandaTradeGateway,
+        trades: OandaTradeClient,
         account_currency: AccountCurrencyProvider,
         trade_mapper_factory: MapperFactory,
         order_mapper: Any,
     ) -> None:
         self.account_id = account_id
-        self.gateway = gateway
+        self.trades = trades
         self._account_currency = account_currency
         self._trade_mapper_factory = trade_mapper_factory
         self.order_mapper = order_mapper
@@ -35,7 +35,7 @@ class OandaTradeService:
     def list_trades(self, **filters: object) -> Sequence[Trade]:
         """Return OANDA trades."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.list_trades(
+            self.trades.list_trades(
                 self.account_id,
                 om.TradesRequest.model_validate(payload.clean(filters)),
             ),
@@ -46,14 +46,14 @@ class OandaTradeService:
     def list_open_trades(self) -> Sequence[Trade]:
         """Return OANDA open trades."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.list_open_trades(self.account_id), 200
+            self.trades.list_open_trades(self.account_id), 200
         )
         return self.mapper().trades_from_response(response)
 
     def get_trade(self, trade_id: str) -> Trade:
         """Return one OANDA trade."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.get_trade(self.account_id, trade_id), 200
+            self.trades.get_trade(self.account_id, trade_id), 200
         )
         return self.mapper().trade_from_response(response)
 
@@ -65,7 +65,7 @@ class OandaTradeService:
             if units is not None
             else None
         )
-        response = self.gateway.close_trade(self.account_id, str(trade.id), request, retry=True)
+        response = self.trades.close_trade(self.account_id, str(trade.id), request, retry=True)
         OandaMutationResponsePolicy.raise_for_unexpected(response)
         return self.order_mapper.order_from_trade_close_response(
             response,
@@ -83,7 +83,7 @@ class OandaTradeService:
     ) -> Metadata:
         """Set OANDA trade client extensions."""
         request = payload.client_extensions(client_id=client_id, tag=tag, comment=comment)
-        response = self.gateway.set_trade_client_extensions(
+        response = self.trades.set_trade_client_extensions(
             self.account_id,
             trade_id,
             om.SetTradeClientExtensionsRequest.model_validate(
@@ -96,7 +96,7 @@ class OandaTradeService:
 
     def set_trade_dependent_orders(self, trade_id: str, **orders: object) -> Metadata:
         """Set OANDA dependent orders for a trade."""
-        response = self.gateway.set_trade_dependent_orders(
+        response = self.trades.set_trade_dependent_orders(
             self.account_id,
             trade_id,
             om.SetTradeDependentOrdersRequest.model_validate(payload.clean(orders)),

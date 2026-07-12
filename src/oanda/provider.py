@@ -26,9 +26,14 @@ class OandaProvider(TradingProvider):
         object.__setattr__(self, "_gateway", gateway)
         super().__init__(
             provider=OANDA_PROVIDER,
-            account_manager=OandaAccountManager(gateway=gateway),
+            account_manager=OandaAccountManager(accounts=gateway.accounts),
             broker=OandaBroker(account_id=account_id, gateway=gateway),
-            data=OandaDataSource(account_id=account_id, gateway=gateway),
+            data=OandaDataSource(
+                account_id=account_id,
+                pricing=gateway.pricing,
+                time_formatter=gateway.transport,
+                session=gateway.transport,
+            ),
         )
 
     @property

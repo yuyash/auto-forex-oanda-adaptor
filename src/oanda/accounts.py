@@ -23,8 +23,8 @@ from oanda.mappers import OandaAccountMapper, OandaInstrumentMapper
 from oanda.payload import OandaPayload as payload
 
 
-class OandaAccountGateway(Protocol):
-    """Gateway methods required by the account manager."""
+class OandaAccountClient(Protocol):
+    """OANDA account endpoint methods required by the account manager."""
 
     def list_accounts(self) -> Any: ...
     def get_account(self, account_id: str) -> Any: ...
@@ -47,29 +47,30 @@ class OandaAccountManager(AccountManager):
     def __init__(
         self,
         *,
-        gateway: OandaAccountGateway,
+        accounts: OandaAccountClient,
         mapper: OandaAccountMapper | None = None,
     ) -> None:
-        self.gateway = gateway
+        self.accounts = accounts
         self.mapper = mapper or OandaAccountMapper()
 
     @classmethod
     def from_settings(cls, settings: OandaSettings) -> OandaAccountManager:
         """Create an OANDA account manager from settings."""
+        gateway = OandaGateway.from_settings(settings)
         return cls(
-            gateway=OandaGateway.from_settings(settings),
+            accounts=gateway.accounts,
         )
 
     def list_accounts(self) -> tuple[Account, ...]:
         """Return accounts authorized for the configured token."""
-        response = OandaResponsePolicy.ensure_success(self.gateway.list_accounts(), 200)
+        response = OandaResponsePolicy.ensure_success(self.accounts.list_accounts(), 200)
         accounts = payload.get(response.body, "accounts", ()) or ()
         return tuple(self.mapper.account_from_properties(account) for account in accounts)
 
     def get_account(self, account_id: AccountId) -> Account:
         """Return a full OANDA account as a Core account reference."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.get_account(str(account_id)), 200
+            self.accounts.get_account(str(account_id)), 200
         )
         account = payload.get(response.body, "account")
         return self.mapper.account_from_properties(account)
@@ -77,7 +78,7 @@ class OandaAccountManager(AccountManager):
     def get_account_summary(self, account_id: AccountId) -> AccountSummary:
         """Return an OANDA account summary as a Core account summary."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.get_account_summary(str(account_id)),
+            self.accounts.get_account_summary(str(account_id)),
             200,
         )
         return self.mapper.summary_from_response(response)
@@ -85,7 +86,7 @@ class OandaAccountManager(AccountManager):
     def get_account_instruments(self, account_id: AccountId) -> tuple[CurrencyPair, ...]:
         """Return tradable instruments for an account."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.get_account_instruments(str(account_id)),
+            self.accounts.get_account_instruments(str(account_id)),
             200,
         )
         items = payload.get(response.body, "instruments", ()) or ()
@@ -110,7 +111,7 @@ class OandaAccountManager(AccountManager):
         if margin_rate is not None:
             request["marginRate"] = str(margin_rate)
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.configure_account(
+            self.accounts.configure_account(
                 str(account_id),
                 om.ConfigureAccountRequest.model_validate(request),
                 retry=True,
@@ -133,7 +134,7 @@ class OandaAccountManager(AccountManager):
     ) -> Metadata:
         """Return raw OANDA account changes metadata."""
         response = OandaResponsePolicy.ensure_success(
-            self.gateway.get_account_changes(
+            self.accounts.get_account_changes(
                 str(account_id),
                 om.AccountChangesRequest.model_validate(
                     {"sinceTransactionID": since_transaction_id}

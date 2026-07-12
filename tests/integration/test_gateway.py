@@ -32,8 +32,8 @@ class TestGateway:
             opener=opener,
         )
 
-        accounts = gateway.list_accounts()
-        prices = gateway.get_account_prices("001", instruments="USD_JPY")
+        accounts = gateway.accounts.list_accounts()
+        prices = gateway.pricing.get_account_prices("001", instruments="USD_JPY")
 
         assert isinstance(accounts.body, AccountsResponse)
         assert accounts.body.accounts[0].id == "001"
