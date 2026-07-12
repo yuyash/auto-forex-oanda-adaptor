@@ -19,7 +19,7 @@ from core import (
 )
 
 from oanda.config import OandaSettings
-from oanda.errors import ensure_success
+from oanda.errors import OandaResponsePolicy
 from oanda.gateway import OandaGateway
 from oanda.mappers import (
     OandaAccountMapper,
@@ -28,12 +28,10 @@ from oanda.mappers import (
     OandaTradeMapper,
     OandaTransactionMapper,
 )
-from oanda.services.broker import (
-    OandaOrderService,
-    OandaPositionService,
-    OandaTradeService,
-    OandaTransactionService,
-)
+from oanda.services.orders import OandaOrderService
+from oanda.services.positions import OandaPositionService
+from oanda.services.trades import OandaTradeService
+from oanda.services.transactions import OandaTransactionService
 
 
 class OandaBroker(Broker):
@@ -89,7 +87,9 @@ class OandaBroker(Broker):
     def account_currency(self) -> Currency:
         """Return the OANDA account home currency, loaded from account summary."""
         if self._account_currency is None:
-            response = ensure_success(self.gateway.get_account_summary(self.account_id), 200)
+            response = OandaResponsePolicy.ensure_success(
+                self.gateway.get_account_summary(self.account_id), 200
+            )
             self._account_currency = self.account_mapper.account_currency_from_response(response)
         return self._account_currency
 
@@ -255,8 +255,3 @@ class OandaBroker(Broker):
     def stream_transactions(self) -> Iterable[Transaction]:
         """Yield OANDA transaction stream updates."""
         return self._transactions.stream_transactions()
-
-    def _format_time(self, value: datetime | None) -> str | None:
-        if value is None:
-            return None
-        return self.gateway.datetime_to_str(value)

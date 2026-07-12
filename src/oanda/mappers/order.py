@@ -6,15 +6,10 @@ from decimal import Decimal
 from typing import Any
 
 from core import (
-    BrokerOrderId,
-    CurrencyPair,
     Metadata,
-    Money,
     Order,
     OrderReason,
-    OrderReasonCode,
     OrderSide,
-    OrderStatus,
     OrderType,
     Position,
     PositionSide,
@@ -24,6 +19,7 @@ from core import (
 
 import oanda.models as om
 from oanda.mappers.instrument import OandaInstrumentMapper
+from oanda.mappers.order_analysis import OandaOrderResponseAnalyzer
 from oanda.payload import OandaPayload as payload
 from oanda.snapshots import OandaOrder
 
@@ -35,7 +31,7 @@ class OandaOrderMapper:
 
     def order_kwargs(self, order: Order) -> dict[str, Any]:
         """Convert a Core order into OANDA order kwargs."""
-        units = self._signed_units(order)
+        units = OandaOrderResponseAnalyzer.signed_units(order)
         logical_trade_id = str(order.metadata.get("logical_trade_id") or order.id)
         base: dict[str, Any] = {
             "instrument": OandaInstrumentMapper.to_oanda(order.instrument),
@@ -82,7 +78,7 @@ class OandaOrderMapper:
         create = payload.first(body, "orderCreateTransaction")
         error_code = str(payload.get(body, "errorCode", "") or "")
 
-        status = self._status_from_transactions(
+        status = OandaOrderResponseAnalyzer.status_from_transactions(
             response=response,
             fill=fill,
             cancel=cancel,
@@ -94,11 +90,13 @@ class OandaOrderMapper:
             if fill is not None
             else Decimal("0")
         )
-        average_fill_price = self._fill_price(fill, order.instrument)
-        broker_order_id = self._broker_order_id(fill, create, cancel, reject)
+        average_fill_price = OandaOrderResponseAnalyzer.fill_price(fill, order.instrument)
+        broker_order_id = OandaOrderResponseAnalyzer.broker_order_id(fill, create, cancel, reject)
         reason = OrderReason(
-            code=self._reason_code(status=status, error_code=error_code),
-            details=self._result_details(response, fill, cancel, reject, create),
+            code=OandaOrderResponseAnalyzer.reason_code(status=status, error_code=error_code),
+            details=OandaOrderResponseAnalyzer.result_details(
+                response, fill, cancel, reject, create
+            ),
         )
 
         mapped_order = order.evolve(
@@ -136,7 +134,7 @@ class OandaOrderMapper:
         reject = payload.first(body, "longOrderRejectTransaction", "shortOrderRejectTransaction")
         create = payload.first(body, "longOrderCreateTransaction", "shortOrderCreateTransaction")
         error_code = str(payload.get(body, "errorCode", "") or "")
-        status = self._status_from_transactions(
+        status = OandaOrderResponseAnalyzer.status_from_transactions(
             response=response,
             fill=fill,
             cancel=cancel,
@@ -144,12 +142,16 @@ class OandaOrderMapper:
             create=create,
         )
         reason = OrderReason(
-            code=self._reason_code(status=status, error_code=error_code),
-            details=self._result_details(response, fill, cancel, reject, create),
+            code=OandaOrderResponseAnalyzer.reason_code(status=status, error_code=error_code),
+            details=OandaOrderResponseAnalyzer.result_details(
+                response, fill, cancel, reject, create
+            ),
         )
         mapped_order = Order(
             status=status,
-            broker_order_id=self._broker_order_id(fill, create, cancel, reject),
+            broker_order_id=OandaOrderResponseAnalyzer.broker_order_id(
+                fill, create, cancel, reject
+            ),
             instrument=position.instrument,
             side=OrderSide.SELL if side == PositionSide.LONG else OrderSide.BUY,
             units=planned_units,
@@ -158,7 +160,7 @@ class OandaOrderMapper:
                 if fill is not None
                 else Decimal("0")
             ),
-            average_fill_price=self._fill_price(fill, position.instrument),
+            average_fill_price=OandaOrderResponseAnalyzer.fill_price(fill, position.instrument),
             reason=reason,
             metadata=reason.details,
         )
@@ -182,7 +184,7 @@ class OandaOrderMapper:
         reject = payload.first(body, "orderRejectTransaction")
         create = payload.first(body, "orderCreateTransaction")
         error_code = str(payload.get(body, "errorCode", "") or "")
-        status = self._status_from_transactions(
+        status = OandaOrderResponseAnalyzer.status_from_transactions(
             response=response,
             fill=fill,
             cancel=cancel,
@@ -190,12 +192,16 @@ class OandaOrderMapper:
             create=create,
         )
         reason = OrderReason(
-            code=self._reason_code(status=status, error_code=error_code),
-            details=self._result_details(response, fill, cancel, reject, create),
+            code=OandaOrderResponseAnalyzer.reason_code(status=status, error_code=error_code),
+            details=OandaOrderResponseAnalyzer.result_details(
+                response, fill, cancel, reject, create
+            ),
         )
         mapped_order = Order(
             status=status,
-            broker_order_id=self._broker_order_id(fill, create, cancel, reject),
+            broker_order_id=OandaOrderResponseAnalyzer.broker_order_id(
+                fill, create, cancel, reject
+            ),
             instrument=trade.instrument,
             side=OrderSide.SELL if trade.side == PositionSide.LONG else OrderSide.BUY,
             units=planned_units,
@@ -204,7 +210,7 @@ class OandaOrderMapper:
                 if fill is not None
                 else Decimal("0")
             ),
-            average_fill_price=self._fill_price(fill, trade.instrument),
+            average_fill_price=OandaOrderResponseAnalyzer.fill_price(fill, trade.instrument),
             reason=reason,
             metadata=trade.metadata.merge(reason.details),
         )
@@ -213,120 +219,3 @@ class OandaOrderMapper:
             related_transaction_ids=tuple(payload.get(body, "relatedTransactionIDs", ()) or ()),
             last_transaction_id=payload.get(body, "lastTransactionID"),
         ).order
-
-    @staticmethod
-    def _signed_units(order: Order) -> Decimal:
-        units = order.units.copy_abs()
-        return units if order.side == OrderSide.BUY else -units
-
-    @staticmethod
-    def _status_from_transactions(
-        *,
-        response: Any,
-        fill: Any,
-        cancel: Any,
-        reject: Any,
-        create: Any,
-    ) -> OrderStatus:
-        if reject is not None or int(getattr(response, "status", 0) or 0) >= 400:
-            return OrderStatus.REJECTED
-        if fill is not None:
-            return OrderStatus.FILLED
-        if cancel is not None:
-            return OrderStatus.CANCELLED
-        if create is not None:
-            return OrderStatus.ACCEPTED
-        return OrderStatus.REJECTED
-
-    @staticmethod
-    def _broker_order_id(*transactions: Any) -> BrokerOrderId | None:
-        for transaction in transactions:
-            if transaction is None:
-                continue
-            value = payload.get(transaction, "orderID") or payload.get(transaction, "id")
-            if value:
-                return BrokerOrderId.of(str(value))
-        return None
-
-    @staticmethod
-    def _fill_price(fill: Any, instrument: CurrencyPair) -> Money | None:
-        price = payload.get(fill, "price")
-        if price is None:
-            return None
-        return Money.of(price, instrument.quote)
-
-    @staticmethod
-    def _reason_code(*, status: OrderStatus, error_code: str) -> OrderReasonCode:
-        normalized = error_code.upper()
-        if "INSUFFICIENT_MARGIN" in normalized:
-            return OrderReasonCode.INSUFFICIENT_MARGIN
-        if "INSTRUMENT" in normalized:
-            return OrderReasonCode.INVALID_INSTRUMENT
-        if "PRICE" in normalized:
-            return OrderReasonCode.INVALID_PRICE
-        if "UNITS" in normalized:
-            return OrderReasonCode.INVALID_UNITS
-        if "MARKET_HALTED" in normalized or "MARKET_CLOSED" in normalized:
-            return OrderReasonCode.MARKET_CLOSED
-        if "RATE" in normalized:
-            return OrderReasonCode.RATE_LIMITED
-        if "TIMEOUT" in normalized:
-            return OrderReasonCode.TIMEOUT
-        if status == OrderStatus.FILLED:
-            return OrderReasonCode.FILLED
-        if status == OrderStatus.ACCEPTED:
-            return OrderReasonCode.ACCEPTED
-        if status == OrderStatus.CANCELLED:
-            return OrderReasonCode.CANCELLED
-        if status == OrderStatus.REJECTED:
-            return OrderReasonCode.BROKER_REJECTED
-        return OrderReasonCode.UNKNOWN
-
-    @staticmethod
-    def _result_details(
-        response: Any,
-        fill: Any,
-        cancel: Any,
-        reject: Any,
-        create: Any,
-    ) -> Metadata:
-        details: dict[str, Any] = {
-            "oanda_response_status": getattr(response, "status", None),
-            "oanda_response_reason": getattr(response, "reason", None),
-        }
-        body = payload.body(response)
-        for key in ("errorCode", "errorMessage", "lastTransactionID", "relatedTransactionIDs"):
-            value = payload.get(body, key)
-            if value is not None:
-                details[key] = value
-        for name, transaction in {
-            "fill_transaction_id": fill,
-            "cancel_transaction_id": cancel,
-            "reject_transaction_id": reject,
-            "create_transaction_id": create,
-        }.items():
-            value = payload.get(transaction, "id")
-            if value is not None:
-                details[name] = value
-        opened_trade_id = OandaOrderMapper._opened_trade_id(fill)
-        if opened_trade_id:
-            details["broker_trade_id"] = opened_trade_id
-        closed_trade_ids = OandaOrderMapper._closed_trade_ids(fill)
-        if closed_trade_ids:
-            details["closed_broker_trade_ids"] = closed_trade_ids
-        return Metadata.model_validate(details)
-
-    @staticmethod
-    def _opened_trade_id(fill: Any) -> str:
-        trade_opened = payload.get(fill, "tradeOpened")
-        value = payload.get(trade_opened, "tradeID") or payload.get(trade_opened, "id")
-        return "" if value is None else str(value)
-
-    @staticmethod
-    def _closed_trade_ids(fill: Any) -> tuple[str, ...]:
-        trades_closed = payload.get(fill, "tradesClosed", ()) or ()
-        return tuple(
-            str(value)
-            for item in trades_closed
-            if (value := payload.get(item, "tradeID") or payload.get(item, "id")) is not None
-        )

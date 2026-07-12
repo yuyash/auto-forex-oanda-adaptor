@@ -2,19 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import logging
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from decimal import Decimal
-from enum import Enum
+from datetime import timedelta
 from typing import Any, TypeVar, cast, overload
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, build_opener
+from urllib.request import build_opener
 
-from pydantic import BaseModel
 from tenacity import (
     Retrying,
     before_sleep_log,
@@ -27,10 +21,12 @@ import oanda.models as om
 from oanda.config import OandaSettings
 from oanda.errors import (
     OandaConnectionError,
+    OandaResponsePolicy,
     OandaRetryableApiError,
     OandaTimeoutError,
-    error_from_response,
 )
+from oanda.transport_codecs import OandaDuration, OandaTransportCodec
+from oanda.transport_http import OandaHttpClient, OandaRequestFactory, OandaUrlBuilder
 
 _LOGGER = logging.getLogger(__name__)
 _RETRYABLE_EXCEPTIONS = (
@@ -56,7 +52,7 @@ class OandaRetryPolicy:
         object.__setattr__(
             self,
             "initial_delay",
-            OandaTransport._duration(
+            OandaDuration.validate(
                 self.initial_delay,
                 name="retry initial delay",
                 allow_zero=True,
@@ -65,7 +61,7 @@ class OandaRetryPolicy:
         object.__setattr__(
             self,
             "max_delay",
-            OandaTransport._duration(
+            OandaDuration.validate(
                 self.max_delay,
                 name="retry max delay",
                 allow_zero=True,
@@ -119,6 +115,7 @@ class OandaTransport:
         stream_timeout: timedelta = timedelta(seconds=60),
         retry_policy: OandaRetryPolicy | None = None,
         opener: Any | None = None,
+        http_client: OandaHttpClient | None = None,
     ) -> None:
         self.access_token = access_token
         self.hostname = hostname
@@ -126,17 +123,31 @@ class OandaTransport:
         self.port = port
         self.ssl = ssl
         self.application = application
-        self.poll_timeout = self._duration(poll_timeout, name="poll_timeout")
-        self.stream_timeout = self._duration(stream_timeout, name="stream_timeout")
+        self.poll_timeout = OandaDuration.validate(poll_timeout, name="poll_timeout")
+        self.stream_timeout = OandaDuration.validate(stream_timeout, name="stream_timeout")
         self.retry_policy = retry_policy or OandaRetryPolicy()
         self.opener = opener or build_opener()
+        self.urls = OandaUrlBuilder(
+            hostname=hostname,
+            stream_hostname=stream_hostname,
+            port=port,
+            ssl=ssl,
+        )
+        self.requests = OandaRequestFactory(
+            access_token=access_token,
+            application=application,
+        )
+        self.http = http_client or OandaHttpClient(
+            opener=self.opener,
+            urls=self.urls,
+            requests=self.requests,
+            poll_timeout=self.poll_timeout,
+            stream_timeout=self.stream_timeout,
+        )
 
     def datetime_to_str(self, value: Any) -> str:
         """Format a datetime value for OANDA query parameters."""
-        if isinstance(value, datetime):
-            text = value.isoformat()
-            return text.replace("+00:00", "Z")
-        return str(value)
+        return OandaTransportCodec.datetime_to_str(value)
 
     def request(
         self,
@@ -148,7 +159,7 @@ class OandaTransport:
         retry: bool = False,
     ) -> om.OandaResponse[dict[str, Any]]:
         """Execute a raw REST request and return a typed response wrapper."""
-        return self._request(
+        return self.typed_request(
             method,
             path,
             dict,
@@ -158,7 +169,7 @@ class OandaTransport:
         )
 
     @overload
-    def _request(
+    def typed_request(
         self,
         method: str,
         path: str,
@@ -172,7 +183,7 @@ class OandaTransport:
     ) -> om.OandaResponse[TModel]: ...
 
     @overload
-    def _request(
+    def typed_request(
         self,
         method: str,
         path: str,
@@ -185,7 +196,7 @@ class OandaTransport:
         retry: bool = True,
     ) -> om.OandaResponse[dict[str, Any]]: ...
 
-    def _request(
+    def typed_request(
         self,
         method: str,
         path: str,
@@ -197,23 +208,26 @@ class OandaTransport:
         return_error_statuses: Iterable[int] = (),
         retry: bool = True,
     ) -> om.OandaResponse[TModel] | om.OandaResponse[dict[str, Any]]:
+        """Execute a REST request and parse the response into an OANDA model."""
         success = frozenset(success_statuses)
         allowed_errors = frozenset(return_error_statuses)
 
         def execute() -> om.OandaResponse[TModel] | om.OandaResponse[dict[str, Any]]:
-            raw = self._send(method, path, query=query, body=body)
+            raw = self.http.send(method, path, query=query, body=body)
             if raw.status not in success and raw.status not in allowed_errors:
-                raise error_from_response(om.OandaResponse(raw=raw, body=raw.body))
+                raise OandaResponsePolicy.error_from_response(
+                    om.OandaResponse(raw=raw, body=raw.body)
+                )
             if response_model is dict:
                 return om.OandaResponse(raw=raw, body=raw.body)
             model_cls = cast(type[TModel], response_model)
             return om.OandaResponse(raw=raw, body=model_cls.model_validate(raw.body))
 
         if retry:
-            return self._retry(execute)
+            return self.retry(execute)
         return execute()
 
-    def _stream(
+    def stream(
         self,
         method: str,
         path: str,
@@ -221,177 +235,14 @@ class OandaTransport:
         query: Any = None,
         stream_kind: str,
     ) -> om.OandaResponse[None]:
-        raw = self._open_stream(method, path, query=query, stream_kind=stream_kind)
+        """Open a streaming request and return an OANDA stream wrapper."""
+        raw = self.http.open_stream(method, path, query=query, stream_kind=stream_kind)
         if raw.status != 200:
-            raise error_from_response(om.OandaResponse(raw=raw, body={}))
+            raise OandaResponsePolicy.error_from_response(om.OandaResponse(raw=raw, body={}))
         return om.OandaResponse(raw=raw, body=None)
 
-    def _retry(self, operation: Callable[[], Any]) -> Any:
+    def retry(self, operation: Callable[[], Any]) -> Any:
+        """Execute an operation under the configured retry policy."""
         if self.retry_policy.attempts <= 1:
             return operation()
         return self.retry_policy.retrying()(operation)
-
-    def _send(
-        self, method: str, path: str, *, query: Any = None, body: Any = None
-    ) -> om.OandaHttpResponse:
-        url = self._url(path, query=query)
-        request = self._build_request(method, url, body=body)
-        try:
-            response = self.opener.open(request, timeout=self.poll_timeout.total_seconds())
-            return self._read_response(response, url)
-        except HTTPError as exc:
-            return self._read_response(exc, url)
-        except TimeoutError as exc:
-            raise OandaTimeoutError(str(exc), url=url, timeout_type="read") from exc
-        except URLError as exc:
-            if isinstance(exc.reason, TimeoutError):
-                raise OandaTimeoutError(str(exc.reason), url=url, timeout_type="connect") from exc
-            raise OandaConnectionError(str(exc.reason), url=url) from exc
-
-    def _open_stream(
-        self,
-        method: str,
-        path: str,
-        *,
-        query: Any = None,
-        stream_kind: str,
-    ) -> om.OandaStreamResponse:
-        url = self._url(path, query=query, stream=True)
-        request = self._build_request(method, url, body=None)
-        try:
-            response = self.opener.open(request, timeout=self.stream_timeout.total_seconds())
-        except HTTPError as exc:
-            body = exc.read()
-            raw = om.OandaHttpResponse(
-                status=int(exc.code),
-                reason=str(exc.reason),
-                headers=dict(exc.headers.items()),
-                body=self._json_body(body),
-                raw_body=body,
-                url=url,
-                content_type=exc.headers.get("Content-Type"),
-            )
-            raise error_from_response(om.OandaResponse(raw=raw, body=raw.body)) from exc
-        except TimeoutError as exc:
-            raise OandaTimeoutError(str(exc), url=url, timeout_type="stream") from exc
-        except URLError as exc:
-            if isinstance(exc.reason, TimeoutError):
-                raise OandaTimeoutError(str(exc.reason), url=url, timeout_type="connect") from exc
-            raise OandaConnectionError(str(exc.reason), url=url) from exc
-
-        return om.OandaStreamResponse(
-            status=int(getattr(response, "status", getattr(response, "code", 0))),
-            reason=str(getattr(response, "reason", "") or ""),
-            headers=dict(response.headers.items()),
-            stream=response,
-            url=url,
-            content_type=response.headers.get("Content-Type"),
-            stream_kind=stream_kind,
-        )
-
-    def _build_request(self, method: str, url: str, *, body: Any) -> Request:
-        payload = None
-        headers = {
-            "Accept": "application/json",
-            "Authorization": f"Bearer {self.access_token}",
-            "User-Agent": self.application,
-        }
-        if body is not None:
-            payload = json.dumps(
-                self._jsonable(self._model_dump(body)),
-                separators=(",", ":"),
-            ).encode()
-            headers["Content-Type"] = "application/json"
-        return Request(url, data=payload, headers=headers, method=method)
-
-    def _url(self, path: str, *, query: Any = None, stream: bool = False) -> str:
-        scheme = "https" if self.ssl else "http"
-        hostname = self.stream_hostname if stream else self.hostname
-        default_port = 443 if self.ssl else 80
-        netloc = hostname if self.port == default_port else f"{hostname}:{self.port}"
-        query_values = self._query_dump(query)
-        suffix = f"?{urlencode(query_values)}" if query_values else ""
-        return f"{scheme}://{netloc}{path}{suffix}"
-
-    @staticmethod
-    def _read_response(response: Any, url: str) -> om.OandaHttpResponse:
-        body = response.read()
-        return om.OandaHttpResponse(
-            status=int(getattr(response, "status", getattr(response, "code", 0))),
-            reason=str(getattr(response, "reason", "") or ""),
-            headers=dict(response.headers.items()),
-            body=OandaTransport._json_body(body),
-            raw_body=body,
-            url=url,
-            content_type=response.headers.get("Content-Type"),
-        )
-
-    @staticmethod
-    def _json_body(body: bytes) -> Any:
-        if not body:
-            return {}
-        return json.loads(body.decode("utf-8"))
-
-    @staticmethod
-    def _duration(value: timedelta, *, name: str, allow_zero: bool = False) -> timedelta:
-        duration = value
-        if allow_zero:
-            if duration.total_seconds() < 0:
-                raise ValueError(f"{name} must not be negative")
-        elif duration.total_seconds() <= 0:
-            raise ValueError(f"{name} must be positive")
-        return duration
-
-    @classmethod
-    def _model_dump(cls, value: Any) -> Any:
-        if value is None:
-            return None
-        if isinstance(value, BaseModel):
-            return value.model_dump(by_alias=True, exclude_none=True, mode="json")
-        if isinstance(value, Mapping):
-            return {key: cls._model_dump(item) for key, item in value.items() if item is not None}
-        if isinstance(value, tuple | list):
-            return [cls._model_dump(item) for item in value]
-        return value
-
-    @classmethod
-    def _query_dump(cls, value: Any) -> dict[str, str]:
-        data = cls._model_dump(value)
-        if not data:
-            return {}
-        if not isinstance(data, Mapping):
-            msg = "query parameters must be a mapping or OandaModel"
-            raise TypeError(msg)
-        return {
-            str(key): cls._query_value(item)
-            for key, item in data.items()
-            if item is not None and item != ()
-        }
-
-    @classmethod
-    def _query_value(cls, value: Any) -> str:
-        if isinstance(value, tuple | list):
-            return ",".join(cls._query_value(item) for item in value)
-        if isinstance(value, bool):
-            return str(value).lower()
-        if isinstance(value, Enum):
-            return str(value.value)
-        if isinstance(value, datetime):
-            return value.isoformat().replace("+00:00", "Z")
-        if isinstance(value, Decimal):
-            return str(value)
-        return str(value)
-
-    @classmethod
-    def _jsonable(cls, value: Any) -> Any:
-        if isinstance(value, Mapping):
-            return {str(key): cls._jsonable(item) for key, item in value.items()}
-        if isinstance(value, tuple | list):
-            return [cls._jsonable(item) for item in value]
-        if isinstance(value, Enum):
-            return value.value
-        if isinstance(value, datetime):
-            return value.isoformat().replace("+00:00", "Z")
-        if isinstance(value, Decimal):
-            return str(value)
-        return value

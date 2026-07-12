@@ -19,7 +19,7 @@ from oanda.transport import OandaRetryPolicy, OandaTransport
 
 
 class OandaGateway:
-    """Compatibility facade for the OANDA REST v20 API."""
+    """Facade that composes OANDA REST v20 endpoint clients."""
 
     def __init__(
         self,

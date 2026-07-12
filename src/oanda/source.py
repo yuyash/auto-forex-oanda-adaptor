@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any, Protocol, cast
 
@@ -10,9 +10,10 @@ from core import Candle, CandleGranularity, CurrencyPair, DataSource, Tick
 
 import oanda.models as om
 from oanda.config import OandaSettings
-from oanda.errors import ensure_success
+from oanda.errors import OandaResponsePolicy
 from oanda.gateway import OandaGateway
 from oanda.mappers import OandaInstrumentMapper, OandaMarketDataMapper
+from oanda.payload import OandaPayload as payload
 
 
 class OandaPricingGateway(Protocol):
@@ -67,17 +68,17 @@ class OandaDataSource(DataSource):
         if start_at is None and end_at is None:
             return self.prices(instruments=(instrument,))
         else:
-            response = ensure_success(
+            response = OandaResponsePolicy.ensure_success(
                 self.gateway.get_instrument_prices(
                     oanda_instrument,
                     **{
-                        "from": self._format_time(start_at),
-                        "to": self._format_time(end_at),
+                        "from": self.format_time(start_at),
+                        "to": self.format_time(end_at),
                     },
                 ),
                 200,
             )
-        prices = cast(Iterable[Any], self._body_get(response.body, "prices", ()) or ())
+        prices = cast(Iterable[Any], payload.get(response.body, "prices", ()) or ())
         return self.mapper.ticks_from_prices(prices)
 
     def prices(
@@ -89,7 +90,7 @@ class OandaDataSource(DataSource):
         include_home_conversions: bool = False,
     ) -> Iterable[Tick]:
         """Return latest OANDA prices for one or more instruments."""
-        response = ensure_success(
+        response = OandaResponsePolicy.ensure_success(
             self.gateway.get_account_prices(
                 self.account_id,
                 om.PricingRequest.model_validate(
@@ -97,7 +98,7 @@ class OandaDataSource(DataSource):
                         "instruments": tuple(
                             OandaInstrumentMapper.to_oanda(instrument) for instrument in instruments
                         ),
-                        "since": self._format_time(since),
+                        "since": self.format_time(since),
                         "includeUnitsAvailable": include_units_available,
                         "includeHomeConversions": include_home_conversions,
                     }
@@ -105,7 +106,7 @@ class OandaDataSource(DataSource):
             ),
             200,
         )
-        prices = cast(Iterable[Any], self._body_get(response.body, "prices", ()) or ())
+        prices = cast(Iterable[Any], payload.get(response.body, "prices", ()) or ())
         return self.mapper.ticks_from_prices(prices)
 
     def candles(
@@ -117,7 +118,7 @@ class OandaDataSource(DataSource):
         end_at: datetime | None = None,
     ) -> Iterable[Candle]:
         """Yield OANDA candlesticks as Core candles."""
-        response = ensure_success(
+        response = OandaResponsePolicy.ensure_success(
             self.gateway.get_account_candles(
                 self.account_id,
                 OandaInstrumentMapper.to_oanda(instrument),
@@ -125,8 +126,8 @@ class OandaDataSource(DataSource):
                     {
                         "price": "M",
                         "granularity": granularity.value,
-                        "from": self._format_time(start_at),
-                        "to": self._format_time(end_at),
+                        "from": self.format_time(start_at),
+                        "to": self.format_time(end_at),
                     }
                 ),
             ),
@@ -162,13 +163,8 @@ class OandaDataSource(DataSource):
         if close is not None:
             close()
 
-    def _format_time(self, value: datetime | None) -> str | None:
+    def format_time(self, value: datetime | None) -> str | None:
+        """Format an optional datetime for OANDA query parameters."""
         if value is None:
             return None
         return self.gateway.datetime_to_str(value)
-
-    @staticmethod
-    def _body_get(body: object, key: str, default: object = None) -> object:
-        if isinstance(body, Mapping):
-            return body.get(key, default)
-        return getattr(body, key, default)

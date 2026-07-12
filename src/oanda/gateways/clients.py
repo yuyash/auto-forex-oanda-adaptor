@@ -19,15 +19,17 @@ class OandaAccountsApi:
 
     def list_accounts(self) -> om.OandaResponse[om.AccountsResponse]:
         """List accounts authorized for the token."""
-        return self._transport._request("GET", "/v3/accounts", om.AccountsResponse)
+        return self._transport.typed_request("GET", "/v3/accounts", om.AccountsResponse)
 
     def get_account(self, account_id: str) -> om.OandaResponse[om.AccountResponse]:
         """Get full account details."""
-        return self._transport._request("GET", f"/v3/accounts/{account_id}", om.AccountResponse)
+        return self._transport.typed_request(
+            "GET", f"/v3/accounts/{account_id}", om.AccountResponse
+        )
 
     def get_account_summary(self, account_id: str) -> om.OandaResponse[om.AccountSummaryResponse]:
         """Get account summary."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET", f"/v3/accounts/{account_id}/summary", om.AccountSummaryResponse
         )
 
@@ -37,7 +39,7 @@ class OandaAccountsApi:
         request: om.AccountInstrumentsRequest | None = None,
     ) -> om.OandaResponse[om.AccountInstrumentsResponse]:
         """Get account tradable instruments."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET",
             f"/v3/accounts/{account_id}/instruments",
             om.AccountInstrumentsResponse,
@@ -54,7 +56,7 @@ class OandaAccountsApi:
     ) -> om.OandaResponse[om.ConfigureAccountResponse]:
         """Configure account alias or margin settings."""
         body = request if request is not None else om.ConfigureAccountRequest.model_validate(kwargs)
-        return self._transport._request(
+        return self._transport.typed_request(
             "PATCH",
             f"/v3/accounts/{account_id}/configuration",
             om.ConfigureAccountResponse,
@@ -69,7 +71,7 @@ class OandaAccountsApi:
         request: om.AccountChangesRequest | None = None,
     ) -> om.OandaResponse[om.AccountChangesResponse]:
         """Get account changes since a transaction ID."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET",
             f"/v3/accounts/{account_id}/changes",
             om.AccountChangesResponse,
@@ -93,7 +95,7 @@ class OandaOrdersApi:
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Create an order."""
         body = request if request is not None else om.CreateOrderRequest.model_validate(kwargs)
-        return self._transport._request(
+        return self._transport.typed_request(
             "POST",
             f"/v3/accounts/{account_id}/orders",
             om.OrderTransactionResponse,
@@ -109,13 +111,13 @@ class OandaOrdersApi:
         request: om.OrdersRequest | None = None,
     ) -> om.OandaResponse[om.OrdersResponse]:
         """List orders."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET", f"/v3/accounts/{account_id}/orders", om.OrdersResponse, query=request
         )
 
     def list_pending_orders(self, account_id: str) -> om.OandaResponse[om.OrdersResponse]:
         """List pending orders."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET", f"/v3/accounts/{account_id}/pendingOrders", om.OrdersResponse
         )
 
@@ -123,7 +125,7 @@ class OandaOrdersApi:
         self, account_id: str, order_specifier: str
     ) -> om.OandaResponse[om.OrderResponse]:
         """Get one order."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET",
             f"/v3/accounts/{account_id}/orders/{order_specifier}",
             om.OrderResponse,
@@ -140,7 +142,7 @@ class OandaOrdersApi:
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Replace one order."""
         body = request if request is not None else om.ReplaceOrderRequest.model_validate(kwargs)
-        return self._transport._request(
+        return self._transport.typed_request(
             "PUT",
             f"/v3/accounts/{account_id}/orders/{order_specifier}",
             om.OrderTransactionResponse,
@@ -158,7 +160,7 @@ class OandaOrdersApi:
         retry: bool = False,
     ) -> om.OandaResponse[om.OrderTransactionResponse]:
         """Cancel one order."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "PUT",
             f"/v3/accounts/{account_id}/orders/{order_specifier}/cancel",
             om.OrderTransactionResponse,
@@ -181,7 +183,7 @@ class OandaOrdersApi:
             if request is not None
             else om.SetOrderClientExtensionsRequest.model_validate(kwargs)
         )
-        return self._transport._request(
+        return self._transport.typed_request(
             "PUT",
             f"/v3/accounts/{account_id}/orders/{order_specifier}/clientExtensions",
             om.OrderTransactionResponse,
@@ -427,13 +429,13 @@ class OandaPositionsApi:
 
     def list_positions(self, account_id: str) -> om.OandaResponse[om.PositionsResponse]:
         """List positions."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET", f"/v3/accounts/{account_id}/positions", om.PositionsResponse
         )
 
     def list_open_positions(self, account_id: str) -> om.OandaResponse[om.PositionsResponse]:
         """List open positions."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET", f"/v3/accounts/{account_id}/openPositions", om.PositionsResponse
         )
 
@@ -441,7 +443,7 @@ class OandaPositionsApi:
         self, account_id: str, instrument: str
     ) -> om.OandaResponse[om.PositionResponse]:
         """Get one position."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET",
             f"/v3/accounts/{account_id}/positions/{instrument}",
             om.PositionResponse,
@@ -458,7 +460,7 @@ class OandaPositionsApi:
     ) -> om.OandaResponse[om.PositionCloseResponse]:
         """Close one position."""
         body = request if request is not None else om.ClosePositionRequest.model_validate(kwargs)
-        return self._transport._request(
+        return self._transport.typed_request(
             "PUT",
             f"/v3/accounts/{account_id}/positions/{instrument}/close",
             om.PositionCloseResponse,
@@ -486,7 +488,7 @@ class OandaPricingApi:
             if request is not None
             else om.PricingRequest.model_validate(self._tuple_field(kwargs, "instruments"))
         )
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET", f"/v3/accounts/{account_id}/pricing", om.PricingResponse, query=query
         )
 
@@ -502,7 +504,7 @@ class OandaPricingApi:
             if request is not None
             else om.PricingStreamRequest.model_validate(self._tuple_field(kwargs, "instruments"))
         )
-        return self._transport._stream(
+        return self._transport.stream(
             "GET",
             f"/v3/accounts/{account_id}/pricing/stream",
             query=query,
@@ -518,7 +520,7 @@ class OandaPricingApi:
     ) -> om.OandaResponse[om.CandlestickResponse]:
         """Fetch account-specific candles."""
         query = request if request is not None else om.AccountCandlesRequest.model_validate(kwargs)
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET",
             f"/v3/accounts/{account_id}/instruments/{instrument}/candles",
             om.CandlestickResponse,
@@ -538,7 +540,7 @@ class OandaPricingApi:
         **kwargs: Any,
     ) -> om.OandaResponse[om.CandlestickResponse]:
         """Fetch public instrument candles."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET",
             f"/v3/instruments/{instrument}/candles",
             om.CandlestickResponse,
@@ -549,7 +551,7 @@ class OandaPricingApi:
         self, instrument: str, **kwargs: Any
     ) -> om.OandaResponse[om.PricingResponse]:
         """Fetch account-independent instrument prices when supported by OANDA."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET",
             f"/v3/instruments/{instrument}/prices",
             om.PricingResponse,
@@ -569,13 +571,13 @@ class OandaTradesApi:
         request: om.TradesRequest | None = None,
     ) -> om.OandaResponse[om.TradesResponse]:
         """List trades."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET", f"/v3/accounts/{account_id}/trades", om.TradesResponse, query=request
         )
 
     def list_open_trades(self, account_id: str) -> om.OandaResponse[om.TradesResponse]:
         """List open trades."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET", f"/v3/accounts/{account_id}/openTrades", om.TradesResponse
         )
 
@@ -583,7 +585,7 @@ class OandaTradesApi:
         self, account_id: str, trade_specifier: str
     ) -> om.OandaResponse[om.TradeResponse]:
         """Get one trade."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET",
             f"/v3/accounts/{account_id}/trades/{trade_specifier}",
             om.TradeResponse,
@@ -600,7 +602,7 @@ class OandaTradesApi:
     ) -> om.OandaResponse[om.TradeTransactionResponse]:
         """Close one trade."""
         body = request if request is not None else om.CloseTradeRequest.model_validate(kwargs)
-        return self._transport._request(
+        return self._transport.typed_request(
             "PUT",
             f"/v3/accounts/{account_id}/trades/{trade_specifier}/close",
             om.TradeTransactionResponse,
@@ -624,7 +626,7 @@ class OandaTradesApi:
             if request is not None
             else om.SetTradeClientExtensionsRequest.model_validate(kwargs)
         )
-        return self._transport._request(
+        return self._transport.typed_request(
             "PUT",
             f"/v3/accounts/{account_id}/trades/{trade_specifier}/clientExtensions",
             om.TradeTransactionResponse,
@@ -648,7 +650,7 @@ class OandaTradesApi:
             if request is not None
             else om.SetTradeDependentOrdersRequest.model_validate(kwargs)
         )
-        return self._transport._request(
+        return self._transport.typed_request(
             "PUT",
             f"/v3/accounts/{account_id}/trades/{trade_specifier}/orders",
             om.TradeTransactionResponse,
@@ -670,7 +672,7 @@ class OandaTransactionsApi:
         request: om.TransactionsRequest | None = None,
     ) -> om.OandaResponse[om.TransactionPagesResponse]:
         """List transaction pages."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET",
             f"/v3/accounts/{account_id}/transactions",
             om.TransactionPagesResponse,
@@ -683,7 +685,7 @@ class OandaTransactionsApi:
         transaction_id: str,
     ) -> om.OandaResponse[om.TransactionResponse]:
         """Get one transaction."""
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET",
             f"/v3/accounts/{account_id}/transactions/{transaction_id}",
             om.TransactionResponse,
@@ -699,7 +701,7 @@ class OandaTransactionsApi:
         query = (
             request if request is not None else om.TransactionRangeRequest.model_validate(kwargs)
         )
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET",
             f"/v3/accounts/{account_id}/transactions/idrange",
             om.TransactionsResponse,
@@ -716,7 +718,7 @@ class OandaTransactionsApi:
         query = (
             request if request is not None else om.TransactionsSinceRequest.model_validate(kwargs)
         )
-        return self._transport._request(
+        return self._transport.typed_request(
             "GET",
             f"/v3/accounts/{account_id}/transactions/sinceid",
             om.TransactionsResponse,
@@ -725,7 +727,7 @@ class OandaTransactionsApi:
 
     def stream_transactions(self, account_id: str) -> om.OandaResponse[None]:
         """Stream transactions."""
-        return self._transport._stream(
+        return self._transport.stream(
             "GET",
             f"/v3/accounts/{account_id}/transactions/stream",
             stream_kind="transactions",

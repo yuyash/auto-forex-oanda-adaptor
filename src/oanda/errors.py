@@ -149,47 +149,53 @@ class OandaServerError(OandaRetryableApiError):
     """Raised when OANDA returns a 5xx response."""
 
 
-def ensure_success(response: Any, *statuses: int) -> Any:
-    """Return response when its status matches one of the expected statuses."""
-    status = response_status_code(response)
-    if statuses:
-        expected = set(statuses)
-        if status not in expected:
-            raise error_from_response(response)
+class OandaResponsePolicy:
+    """Classify OANDA HTTP responses and enforce expected statuses."""
+
+    retryable_statuses = RETRYABLE_STATUSES
+
+    @classmethod
+    def ensure_success(cls, response: Any, *statuses: int) -> Any:
+        """Return response when its status matches one of the expected statuses."""
+        status = cls.status_code(response)
+        if statuses:
+            expected = set(statuses)
+            if status not in expected:
+                raise cls.error_from_response(response)
+            return response
+        if status is None or status < 200 or status >= 300:
+            raise cls.error_from_response(response)
         return response
-    if status is None or status < 200 or status >= 300:
-        raise error_from_response(response)
-    return response
 
+    @classmethod
+    def error_from_response(cls, response: Any) -> OandaApiError:
+        """Create the most specific adapter exception for an OANDA response."""
+        status = cls.status_code(response)
+        if status == 400:
+            return OandaBadRequestError.from_response(response)
+        if status == 401:
+            return OandaAuthenticationError.from_response(response)
+        if status == 403:
+            return OandaAuthorizationError.from_response(response)
+        if status == 404:
+            return OandaNotFoundError.from_response(response)
+        if status == 429:
+            return OandaRateLimitError.from_response(response)
+        if status is not None and 500 <= status < 600:
+            return OandaServerError.from_response(response)
+        if cls.is_retryable_status(status):
+            return OandaRetryableApiError.from_response(response)
+        return OandaApiError.from_response(response)
 
-def error_from_response(response: Any) -> OandaApiError:
-    """Create the most specific adapter exception for an OANDA response."""
-    status = response_status_code(response)
-    if status == 400:
-        return OandaBadRequestError.from_response(response)
-    if status == 401:
-        return OandaAuthenticationError.from_response(response)
-    if status == 403:
-        return OandaAuthorizationError.from_response(response)
-    if status == 404:
-        return OandaNotFoundError.from_response(response)
-    if status == 429:
-        return OandaRateLimitError.from_response(response)
-    if status is not None and 500 <= status < 600:
-        return OandaServerError.from_response(response)
-    if status in RETRYABLE_STATUSES:
-        return OandaRetryableApiError.from_response(response)
-    return OandaApiError.from_response(response)
+    @classmethod
+    def is_retryable_status(cls, status: int | None) -> bool:
+        """Return whether an HTTP response status should be retried."""
+        return status in cls.retryable_statuses
 
-
-def is_retryable_response_status(status: int | None) -> bool:
-    """Return whether an HTTP response status should be retried."""
-    return status in RETRYABLE_STATUSES
-
-
-def response_status_code(response: Any) -> int | None:
-    """Return a response status as an integer when possible."""
-    try:
-        return int(getattr(response, "status", ""))
-    except TypeError, ValueError:
-        return None
+    @classmethod
+    def status_code(cls, response: Any) -> int | None:
+        """Return a response status as an integer when possible."""
+        try:
+            return int(getattr(response, "status", ""))
+        except TypeError, ValueError:
+            return None

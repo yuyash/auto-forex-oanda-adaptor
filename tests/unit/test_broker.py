@@ -20,7 +20,7 @@ from core import (
 import oanda.broker as broker_module
 import oanda.models as om
 from oanda.broker import OandaBroker
-from oanda.services.broker import OandaOrderService
+from oanda.services.orders import OandaOrderRequestFactory
 from tests.support import FakeResponse
 
 USD_JPY = CurrencyPair.of("USD_JPY")
@@ -183,6 +183,6 @@ class TestBroker:
         )
 
     def test_order_service_maps_core_order_types(self) -> None:
-        assert OandaOrderService.order_type(OrderType.MARKET) == "MARKET"
-        assert OandaOrderService.order_type(OrderType.LIMIT) == "LIMIT"
-        assert OandaOrderService.order_type(OrderType.STOP) == "STOP"
+        assert OandaOrderRequestFactory.order_type(OrderType.MARKET) == "MARKET"
+        assert OandaOrderRequestFactory.order_type(OrderType.LIMIT) == "LIMIT"
+        assert OandaOrderRequestFactory.order_type(OrderType.STOP) == "STOP"
